@@ -1,0 +1,68 @@
+import bpy
+
+
+class BrigNetPredict(bpy.types.Operator):
+    """Tooltip"""
+    bl_idname = "object.brignet_predict"
+    bl_label = "Predict joints and skinning"
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+
+    def execute(self, context):
+        #main(context)
+        return {'FINISHED'}
+
+
+class BrignetPanel(bpy.types.Panel):
+    """Creates a Panel in the scene context of the properties editor"""
+    bl_label = "Layout Demo"
+    bl_idname = "SCENE_PT_layout"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'bRigNet'
+
+    def draw(self, context):
+        layout = self.layout
+
+        wm = context.window_manager
+        scene = context.scene
+
+        # Create a simple row.
+        layout.label(text=" Simple Row:")
+
+        row = layout.row()
+        row.prop(wm, 'brignet_downsample_skin', text='Sownsample Skinning')
+
+        row = layout.row()
+        row.prop(wm, 'brignet_targetmesh', text='Target')
+
+        row = layout.row()
+        row.prop(wm, 'brignet_highrescollection', text='HighRes')
+
+        # Big render button
+        layout.label(text="Big Button:")
+        row = layout.row()
+        row.operator("object.brignet_predict")
+
+
+def register_properties():
+    bpy.types.WindowManager.brignet_downsample_skin = bpy.props.BoolProperty(name="downsample_skinning", default=True)
+    bpy.types.WindowManager.brignet_targetmesh = bpy.props.PointerProperty(type=bpy.types.Object,
+                                                                           name="bRigNet Target Object",
+                                                                           description="Mesh to use for skin prediction. Keep below 5000 triangles",
+                                                                           poll=lambda self, obj: obj.type == 'MESH' and obj.data is not self)
+    bpy.types.WindowManager.brignet_highrescollection = bpy.props.PointerProperty(type=bpy.types.Collection,
+                                                                                  name="bRigNet HighRes Objects",
+                                                                                  description="Meshes to use for final skinning")
+
+    bpy.utils.register_class(BrigNetPredict)
+
+
+def unregister_properties():
+    bpy.utils.unregister_class(BrigNetPredict)
+
+    del bpy.types.WindowManager.brignet_downsample_skin
+    del bpy.types.WindowManager.brignet_targetmesh
+    del bpy.types.WindowManager.brignet_highrescollection
