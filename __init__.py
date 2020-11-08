@@ -53,7 +53,7 @@ def register():
     except NameError:
         pass
 
-    rignetconnect.load_networks()
+    #rignetconnect.load_networks()
     brignet.register_properties()
     bpy.utils.register_class(BrignetPanel)
 

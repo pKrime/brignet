@@ -54,6 +54,8 @@ from models.SKINNING import SKINNET
 import bpy
 import tempfile
 
+
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 MESH_NORMALIZED = None
 
@@ -83,16 +85,10 @@ def create_single_data(mesh_obj):
     mesh_f = np.asarray([list(p.vertices) for p in mesh_obj.data.polygons])
 
     mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(mesh_v), o3d.open3d.utility.Vector3iVector(mesh_f))
-    # mesh.remove_duplicated_vertices()
-    # mesh.remove_duplicated_triangles()
-    # mesh.remove_degenerate_triangles()
-    # mesh.remove_non_manifold_edges()
-    # mesh.compute_adjacency_list()
-    # mesh.compute_convex_hull()
-    # mesh = o3d.io.read_triangle_mesh(r'D:\User\Documents\Source\neural\RigNet\quick_start\17872_ori.obj')
     mesh.compute_vertex_normals()
     mesh.compute_triangle_normals()
 
+    # renew mesh component list with o3d mesh, for consistency
     mesh_v = np.asarray(mesh.vertices)
     mesh_vn = np.asarray(mesh.vertex_normals)
     mesh_f = np.asarray(mesh.triangles)
@@ -102,7 +98,7 @@ def create_single_data(mesh_obj):
                                                 triangles=o3d.utility.Vector3iVector(mesh_f))
     global MESH_NORMALIZED
     MESH_NORMALIZED = mesh_normalized
-    # o3d.io.write_triangle_mesh(mesh_filaname.replace("_remesh.obj", "_normalized.obj"), mesh_normalized)
+
     # vertices
     v = np.concatenate((mesh_v, mesh_vn), axis=1)
     v = torch.from_numpy(v).float()
@@ -581,7 +577,7 @@ def predict_rig(mesh_obj, bandwidth, threshold):
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
     # and to save cpu memory in skinning calculation.
     # Change to False to be more accurate but less efficient.
-    downsample_skinning = True
+    downsample_skinning = True  # TODO: use settings
 
     # load all weights
     print("loading all networks...")
@@ -630,13 +626,13 @@ def predict_rig(mesh_obj, bandwidth, threshold):
 
     # here we reverse the normalization to the original scale and position
     pred_rig.normalize(scale_normalize, -translation_normalize)
-    current_ob = bpy.context.active_object
-    current_ob.vertex_groups.clear()
+
+    mesh_obj.vertex_groups.clear()
 
     for obj in bpy.data.objects:
         obj.select_set(False)
 
-    ArmGenerator(pred_rig, current_ob).generate()
+    ArmGenerator(pred_rig, mesh_obj).generate()
     torch.cuda.empty_cache()
 
 
