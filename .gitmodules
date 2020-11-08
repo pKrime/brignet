@@ -1,0 +1,3 @@
+[submodule "RigNet"]
+	path = RigNet
+	url = https://github.com/zhan-xu/RigNet.git
