@@ -32,6 +32,7 @@ bl_info = {
 
 import bpy
 from . import brignet
+from . import rignetconnect
 from .brignet import BrignetPanel
 
 
@@ -48,13 +49,16 @@ def register():
     from importlib import reload
     try:
         reload(brignet)
+        reload(rignetconnect)
     except NameError:
         pass
 
+    rignetconnect.load_networks()
     brignet.register_properties()
     bpy.utils.register_class(BrignetPanel)
 
 
 def unregister():
+    rignetconnect.clear()
     bpy.utils.unregister_class(BrignetPanel)
     brignet.unregister_properties()

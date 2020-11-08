@@ -1,5 +1,5 @@
 import bpy
-
+from . import rignetconnect
 
 class BrigNetPredict(bpy.types.Operator):
     """Tooltip"""
@@ -11,7 +11,8 @@ class BrigNetPredict(bpy.types.Operator):
         return context.active_object is not None
 
     def execute(self, context):
-        #main(context)
+        wm = context.window_manager
+        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold)
         return {'FINISHED'}
 
 
@@ -46,6 +47,12 @@ class BrignetPanel(bpy.types.Panel):
         row = layout.row()
         row.operator("object.brignet_predict")
 
+        row = layout.row()
+        row.prop(wm, 'brignet_bandwidth', text='BandWidth')
+
+        row = layout.row()
+        row.prop(wm, 'brignet_treshold', text='Treshold')
+
 
 def register_properties():
     bpy.types.WindowManager.brignet_downsample_skin = bpy.props.BoolProperty(name="downsample_skinning", default=True)
@@ -57,6 +64,9 @@ def register_properties():
                                                                                   name="bRigNet HighRes Objects",
                                                                                   description="Meshes to use for final skinning")
 
+    bpy.types.WindowManager.brignet_bandwidth = bpy.props.FloatProperty(name="bandwidth", default=0.429)
+    bpy.types.WindowManager.brignet_threshold = bpy.props.FloatProperty(name="threshold", default=1e-5)
+
     bpy.utils.register_class(BrigNetPredict)
 
 
@@ -66,3 +76,5 @@ def unregister_properties():
     del bpy.types.WindowManager.brignet_downsample_skin
     del bpy.types.WindowManager.brignet_targetmesh
     del bpy.types.WindowManager.brignet_highrescollection
+    del bpy.types.WindowManager.brignet_bandwidth
+    del bpy.types.WindowManager.brignet_threshold
