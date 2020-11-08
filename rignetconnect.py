@@ -1,18 +1,15 @@
 import os
 import sys
 
+rignet_paths = ['C:\\Users\\User\\anaconda3\\envs\\rignet\\DLLs',
+                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib',
+                'C:\\Users\\User\\anaconda3\\envs\\rignet',
+                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages',
+                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\win32',
+                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\win32\\lib',
+                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\Pythonwin']
 
-RIGNET_FOLDER = os.path.join(os.path.dirname(__file__), 'RigNet')
-
-rignet_paths = [
-    'C:\\Users\\User\\anaconda3\\envs\\rignet\\DLLs',
-    'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib',
-    'C:\\Users\\User\\anaconda3\\envs\\rignet',
-    'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages',
-    'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\win32',
-    'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\win32\\lib',
-    'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\Pythonwin'
-]
+RIGNET_FOLDER = 'D:\\User\\Documents\\Source\\neural\\RigNet'
 
 rignet_paths.append(RIGNET_FOLDER)
 
@@ -50,11 +47,8 @@ from models.ROOT_GCN import ROOTNET
 from models.PairCls_GCN import PairCls as BONENET
 from models.SKINNING import SKINNET
 
-
 import bpy
 import tempfile
-
-
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 MESH_NORMALIZED = None
@@ -574,6 +568,7 @@ def load_networks():
 
 
 def predict_rig(mesh_obj, bandwidth, threshold):
+    print("predicting rig")
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
     # and to save cpu memory in skinning calculation.
     # Change to False to be more accurate but less efficient.

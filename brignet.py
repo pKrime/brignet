@@ -8,12 +8,16 @@ class BrigNetPredict(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.active_object is not None
+        wm = context.window_manager
+        if not wm.brignet_targetmesh:
+            return False
+
+        return wm.brignet_targetmesh.type == 'MESH'
 
     def execute(self, context):
         wm = context.window_manager
         #rignetconnect.load_networks()
-        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold)
+        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000)
         return {'FINISHED'}
 
 
@@ -65,8 +69,8 @@ def register_properties():
                                                                                   name="bRigNet HighRes Objects",
                                                                                   description="Meshes to use for final skinning")
 
-    bpy.types.WindowManager.brignet_bandwidth = bpy.props.FloatProperty(name="bandwidth", default=0.429)
-    bpy.types.WindowManager.brignet_threshold = bpy.props.FloatProperty(name="threshold", default=1e-5)
+    bpy.types.WindowManager.brignet_bandwidth = bpy.props.FloatProperty(name="bandwidth", default=0.0429)
+    bpy.types.WindowManager.brignet_threshold = bpy.props.FloatProperty(name="threshold", default=2.5e-2)
 
     bpy.utils.register_class(BrigNetPredict)
 
