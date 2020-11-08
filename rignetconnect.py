@@ -9,7 +9,7 @@ rignet_paths = ['C:\\Users\\User\\anaconda3\\envs\\rignet\\DLLs',
                 'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\win32\\lib',
                 'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\Pythonwin']
 
-RIGNET_FOLDER = 'D:\\User\\Documents\\Source\\neural\\RigNet'
+RIGNET_FOLDER = os.path.join(os.path.dirname(__file__), 'RigNet')
 
 rignet_paths.append(RIGNET_FOLDER)
 
@@ -567,12 +567,11 @@ def load_networks():
     print("     skinning prediction network loaded.")
 
 
-def predict_rig(mesh_obj, bandwidth, threshold):
+def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True):
     print("predicting rig")
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
     # and to save cpu memory in skinning calculation.
     # Change to False to be more accurate but less efficient.
-    downsample_skinning = True  # TODO: use settings
 
     # load all weights
     print("loading all networks...")

@@ -16,8 +16,7 @@ class BrigNetPredict(bpy.types.Operator):
 
     def execute(self, context):
         wm = context.window_manager
-        #rignetconnect.load_networks()
-        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000)
+        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000, wm.brignet_downsample_skin)
         return {'FINISHED'}
 
 
