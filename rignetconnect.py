@@ -55,6 +55,7 @@ import bpy
 import tempfile
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+MESH_NORMALIZED = None
 
 
 def normalize_obj(mesh_v):

@@ -34,7 +34,7 @@ class BrignetPanel(bpy.types.Panel):
         layout.label(text=" Simple Row:")
 
         row = layout.row()
-        row.prop(wm, 'brignet_downsample_skin', text='Sownsample Skinning')
+        row.prop(wm, 'brignet_downsample_skin', text='Downsample Skinning')
 
         row = layout.row()
         row.prop(wm, 'brignet_targetmesh', text='Target')
@@ -51,7 +51,7 @@ class BrignetPanel(bpy.types.Panel):
         row.prop(wm, 'brignet_bandwidth', text='BandWidth')
 
         row = layout.row()
-        row.prop(wm, 'brignet_treshold', text='Treshold')
+        row.prop(wm, 'brignet_threshold', text='Treshold')
 
 
 def register_properties():
