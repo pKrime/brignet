@@ -300,7 +300,7 @@ def calc_geodesic_matrix(bones, mesh_v, surface_geodesic, mesh_filename, subsamp
     return visible_matrix
 
 
-def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, subsampling=False):
+def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, use_sampling=False, decimation=3000, sampling=1500):
     """
     calculate volumetric geodesic distance from vertices to each bones
     :param bones: B*6 numpy array where each row stores the starting and ending joint position of a bone
@@ -310,24 +310,27 @@ def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, subsampling=False):
     :return: an approaximate volumetric geodesic distance matrix V*B, were (v,b) is the distance from vertex v to bone b
     """
 
-    if subsampling:
-        # mesh0 = o3d.io.read_triangle_mesh(mesh_filename)
+    if use_sampling:
         mesh0 = MESH_NORMALIZED
-        mesh0 = mesh0.simplify_quadric_decimation(3000)
-        # o3d.io.write_triangle_mesh(mesh_filename.replace(".obj", "_simplified.obj"), mesh0)
-        # mesh_trimesh = trimesh.load(mesh_filename.replace(".obj", "_simplified.obj"))
+        mesh0 = mesh0.simplify_quadric_decimation(decimation)
+
         fo_simplified = tempfile.NamedTemporaryFile(suffix='_simplified.obj')
         fo_simplified.close()
         o3d.io.write_triangle_mesh(fo_simplified.name, mesh0)
         mesh_trimesh = trimesh.load(fo_simplified.name)
         os.unlink(fo_simplified.name)
-        subsamples_ids = np.random.choice(len(mesh_v), np.min((len(mesh_v), 1500)), replace=False)
+
+        subsamples_ids = np.random.choice(len(mesh_v), np.min((len(mesh_v), sampling)), replace=False)
         subsamples = mesh_v[subsamples_ids, :]
         surface_geodesic = surface_geodesic[subsamples_ids, :][:, subsamples_ids]
     else:
-        raise NotImplementedError
-        mesh_trimesh = MESH_NORMALIZED
+        fo = tempfile.NamedTemporaryFile(suffix='.obj')
+        fo.close()
+        o3d.io.write_triangle_mesh(fo.name, MESH_NORMALIZED)
+        mesh_trimesh = trimesh.load(fo.name)
+        os.unlink(fo.name)
         subsamples = mesh_v
+
     origins, ends, pts_bone_dist = pts2line(subsamples, bones)
     pts_bone_visibility = calc_pts2bone_visible_mat(mesh_trimesh, origins, ends)
     pts_bone_visibility = pts_bone_visibility.reshape(len(bones), len(subsamples)).transpose()
@@ -355,16 +358,14 @@ def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, subsampling=False):
                 visible_matrix[r, c] = 8.0 + pts_bone_dist[r, c]
             else:
                 visible_matrix[r, c] = dist1 + visible_matrix[nn_visible, c]
-    if subsampling:
+    if use_sampling:
         nn_dist = np.sum((mesh_v[:, np.newaxis, :] - subsamples[np.newaxis, ...]) ** 2, axis=2)
         nn_ind = np.argmin(nn_dist, axis=1)
         visible_matrix = visible_matrix[nn_ind, :]
-        # os.remove(mesh_filename.replace(".obj", "_simplified.obj"))
     return visible_matrix
 
 
-# def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, mesh_filename, subsampling=False):
-def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, subsampling=False):
+def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, subsampling=False, decimation=3000, sampling=1500):
     """
     predict skinning
     :param input_data: wrapped input data
@@ -379,8 +380,8 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, sub
     bones, bone_names, bone_isleaf = get_bones(pred_skel)
     mesh_v = input_data.pos.data.cpu().numpy()
     print("     calculating volumetric geodesic distance from vertices to bone. This step takes some time...")
-    # geo_dist = calc_geodesic_matrix(bones, mesh_v, surface_geodesic, mesh_filename, subsampling=subsampling)
-    geo_dist = calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, subsampling=subsampling)
+
+    geo_dist = calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, use_sampling=subsampling, decimation=decimation, sampling=sampling)
     input_samples = []  # joint_pos (x, y, z), (bone_id, 1/D)*5
     loss_mask = []
     skin_nn = []
@@ -432,38 +433,6 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, sub
     skin_pred_full = skin_pred_full / (skin_pred_full.sum(axis=1, keepdims=True) + 1e-10)
     skel_res = assemble_skel_skin(pred_skel, skin_pred_full)
     return skel_res
-
-
-def tranfer_to_ori_mesh(filename_ori, filename_remesh, pred_rig):
-    """
-    convert the predicted rig of remeshed model to the rig of the original model.
-    Just assign skinning weight based on nearest neighbor
-    :param filename_ori: original mesh filename
-    :param filename_remesh: remeshed mesh filename
-    :param pred_rig: predicted rig
-    :return: predicted rig for original mesh
-    """
-    mesh_remesh = o3d.io.read_triangle_mesh(filename_remesh)
-    mesh_ori = o3d.io.read_triangle_mesh(filename_ori)
-    tranfer_rig = Info()
-
-    vert_remesh = np.asarray(mesh_remesh.vertices)
-    vert_ori = np.asarray(mesh_ori.vertices)
-
-    vertice_distance = np.sqrt(np.sum((vert_ori[np.newaxis, ...] - vert_remesh[:, np.newaxis, :]) ** 2, axis=2))
-    vertice_raw_id = np.argmin(vertice_distance,
-                               axis=0)  # nearest vertex id on the fixed mesh for each vertex on the remeshed mesh
-
-    tranfer_rig.root = pred_rig.root
-    tranfer_rig.joint_pos = pred_rig.joint_pos
-    new_skin = []
-    for v in range(len(vert_ori)):
-        skin_v = [v]
-        v_nn = vertice_raw_id[v]
-        skin_v += pred_rig.joint_skin[v_nn][1:]
-        new_skin.append(skin_v)
-    tranfer_rig.joint_skin = new_skin
-    return tranfer_rig
 
 
 class ArmGenerator(object):
@@ -534,40 +503,7 @@ class ArmGenerator(object):
         mod.object = arm_obj
 
 
-def load_networks():
-    # load all weights
-    print("loading all networks...")
-
-    jointNet = JOINTNET()
-    jointNet.to(device)
-    jointNet.eval()
-    jointNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/gcn_meanshift/model_best.pth.tar'))
-    jointNet.load_state_dict(jointNet_checkpoint['state_dict'])
-    print("     joint prediction network loaded.")
-
-    rootNet = ROOTNET()
-    rootNet.to(device)
-    rootNet.eval()
-    rootNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/rootnet/model_best.pth.tar'))
-    rootNet.load_state_dict(rootNet_checkpoint['state_dict'])
-    print("     root prediction network loaded.")
-
-    boneNet = BONENET()
-    boneNet.to(device)
-    boneNet.eval()
-    boneNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/bonenet/model_best.pth.tar'))
-    boneNet.load_state_dict(boneNet_checkpoint['state_dict'])
-    print("     connection prediction network loaded.")
-
-    skinNet = SKINNET(nearest_bone=5, use_Dg=True, use_Lf=True)
-    skinNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/skinnet/model_best.pth.tar'))
-    skinNet.load_state_dict(skinNet_checkpoint['state_dict'])
-    skinNet.to(device)
-    skinNet.eval()
-    print("     skinning prediction network loaded.")
-
-
-def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True):
+def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decimation=3000, sampling=1500):
     print("predicting rig")
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
     # and to save cpu memory in skinning calculation.
@@ -616,7 +552,7 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True):
     # pred_skeleton.normalize(scale_normalize, -translation_normalize)
 
     print("predicting skinning")
-    pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, subsampling=downsample_skinning)
+    pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, subsampling=downsample_skinning, decimation=decimation, sampling=sampling)
 
     # here we reverse the normalization to the original scale and position
     pred_rig.normalize(scale_normalize, -translation_normalize)

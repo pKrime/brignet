@@ -22,7 +22,10 @@ class BrigNetPredict(bpy.types.Operator):
     def execute(self, context):
         wm = context.window_manager
         rigutils.remove_modifiers(wm.brignet_targetmesh, type_list=('ARMATURE',))
-        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000, wm.brignet_downsample_skin)
+        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000,
+                                  wm.brignet_downsample_skin,
+                                  wm.brignet_downsample_decimate,
+                                  wm.brignet_downsample_sampling)
 
         if wm.brignet_highrescollection:
             rigutils.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
@@ -51,6 +54,13 @@ class BrignetPanel(bpy.types.Panel):
         row = layout.row()
         row.prop(wm, 'brignet_downsample_skin', text='Downsample Skinning')
 
+        if wm.brignet_downsample_skin:
+            row = layout.row()
+            col = row.column()
+            col.prop(wm, 'brignet_downsample_decimate', text='Decimation')
+            col = row.column()
+            col.prop(wm, 'brignet_downsample_sampling', text='Sampling')
+
         row = layout.row()
         row.prop(wm, 'brignet_targetmesh', text='Target')
 
@@ -71,6 +81,10 @@ class BrignetPanel(bpy.types.Panel):
 
 def register_properties():
     bpy.types.WindowManager.brignet_downsample_skin = bpy.props.BoolProperty(name="downsample_skinning", default=True)
+    bpy.types.WindowManager.brignet_downsample_decimate = bpy.props.IntProperty(name="downsample_decimate", default=3000)
+    bpy.types.WindowManager.brignet_downsample_sampling = bpy.props.IntProperty(name="downsample_sampling", default=1500)
+
+
     bpy.types.WindowManager.brignet_targetmesh = bpy.props.PointerProperty(type=bpy.types.Object,
                                                                            name="bRigNet Target Object",
                                                                            description="Mesh to use for skin prediction. Keep below 5000 triangles",
@@ -89,6 +103,8 @@ def unregister_properties():
     bpy.utils.unregister_class(BrigNetPredict)
 
     del bpy.types.WindowManager.brignet_downsample_skin
+    del bpy.types.WindowManager.brignet_downsample_decimate
+    del bpy.types.WindowManager.brignet_downsample_sampling
     del bpy.types.WindowManager.brignet_targetmesh
     del bpy.types.WindowManager.brignet_highrescollection
     del bpy.types.WindowManager.brignet_bandwidth
