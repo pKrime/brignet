@@ -1,5 +1,10 @@
 import bpy
 from . import rignetconnect
+from .import rigutils
+
+
+from importlib import reload
+reload(rigutils)
 
 class BrigNetPredict(bpy.types.Operator):
     """Tooltip"""
@@ -16,7 +21,13 @@ class BrigNetPredict(bpy.types.Operator):
 
     def execute(self, context):
         wm = context.window_manager
+        rigutils.remove_modifiers(wm.brignet_targetmesh, type_list=('ARMATURE',))
         rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000, wm.brignet_downsample_skin)
+
+        if wm.brignet_highrescollection:
+            rigutils.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
+
+
         return {'FINISHED'}
 
 

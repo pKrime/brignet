@@ -161,7 +161,7 @@ def predict_joints(input_data, vox, joint_pred_net, threshold, bandwidth=None, m
     attn_pred_np = np.tile(attn_pred_np, (2, 1))
 
     # img = draw_shifted_pts(mesh_filename, y_pred_np, weights=attn_pred_np)
-    if bandwidth is None:
+    if not bandwidth:
         bandwidth = bandwidth_pred.item()
     y_pred_np = meanshift_cluster(y_pred_np, bandwidth, attn_pred_np, max_iter=40)
     # img = draw_shifted_pts(mesh_filename, y_pred_np, weights=attn_pred_np)
