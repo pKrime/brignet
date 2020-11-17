@@ -1,13 +1,13 @@
 import bpy
-from . import rignetconnect
 from .import rigutils
 
 
 from importlib import reload
 reload(rigutils)
 
+
 class BrigNetPredict(bpy.types.Operator):
-    """Tooltip"""
+    """Predict joint position of chosen mesh using a trained model"""
     bl_idname = "object.brignet_predict"
     bl_label = "Predict joints and skinning"
 
@@ -22,6 +22,14 @@ class BrigNetPredict(bpy.types.Operator):
     def execute(self, context):
         wm = context.window_manager
         rigutils.remove_modifiers(wm.brignet_targetmesh, type_list=('ARMATURE',))
+
+        try:
+            from . import rignetconnect
+            reload(rignetconnect)
+        except ModuleNotFoundError:
+            self.report({'WARNING'}, "Some modules not found, please check bRigNet preferences")
+            return {'CANCELLED'}
+
         rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000,
                                   wm.brignet_downsample_skin,
                                   wm.brignet_downsample_decimate,
@@ -29,7 +37,6 @@ class BrigNetPredict(bpy.types.Operator):
 
         if wm.brignet_highrescollection:
             rigutils.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
-
 
         return {'FINISHED'}
 
@@ -47,9 +54,6 @@ class BrignetPanel(bpy.types.Panel):
 
         wm = context.window_manager
         scene = context.scene
-
-        # Create a simple row.
-        layout.label(text=" Simple Row:")
 
         row = layout.row()
         row.prop(wm, 'brignet_downsample_skin', text='Downsample Skinning')
@@ -82,7 +86,7 @@ class BrignetPanel(bpy.types.Panel):
 def register_properties():
     bpy.types.WindowManager.brignet_downsample_skin = bpy.props.BoolProperty(name="downsample_skinning", default=True)
     bpy.types.WindowManager.brignet_downsample_decimate = bpy.props.IntProperty(name="downsample_decimate", default=3000)
-    bpy.types.WindowManager.brignet_downsample_sampling = bpy.props.IntProperty(name="downsample_sampling", default=1500)
+    bpy.types.WindowManager.brignet_downsample_sampling = bpy.props.IntProperty(name="downsample_sampling", default=2000)
 
 
     bpy.types.WindowManager.brignet_targetmesh = bpy.props.PointerProperty(type=bpy.types.Object,
@@ -94,7 +98,7 @@ def register_properties():
                                                                                   description="Meshes to use for final skinning")
 
     bpy.types.WindowManager.brignet_bandwidth = bpy.props.FloatProperty(name="bandwidth", default=0.0429)
-    bpy.types.WindowManager.brignet_threshold = bpy.props.FloatProperty(name="threshold", default=2.5e-2)
+    bpy.types.WindowManager.brignet_threshold = bpy.props.FloatProperty(name="threshold", default=0.75e-2)
 
     bpy.utils.register_class(BrigNetPredict)
 

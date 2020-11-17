@@ -1,23 +1,6 @@
 import os
 import sys
 
-rignet_paths = ['C:\\Users\\User\\anaconda3\\envs\\rignet\\DLLs',
-                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib',
-                'C:\\Users\\User\\anaconda3\\envs\\rignet',
-                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages',
-                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\win32',
-                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\win32\\lib',
-                'C:\\Users\\User\\anaconda3\\envs\\rignet\\lib\\site-packages\\Pythonwin']
-
-RIGNET_FOLDER = os.path.join(os.path.dirname(__file__), 'RigNet')
-
-rignet_paths.append(RIGNET_FOLDER)
-
-for p in rignet_paths:
-    if p not in sys.path:
-        sys.path.append(p)
-
-from sys import platform
 import trimesh
 import numpy as np
 import open3d as o3d
@@ -117,15 +100,19 @@ def create_single_data(mesh_obj):
 
     o3d.io.write_triangle_mesh(fo_normalized.name, mesh_normalized)
 
-    if True:  # not os.path.exists(mesh_filaname.replace('_remesh.obj', '_normalized.binvox')):
-        if platform == "linux" or platform == "linux2":
-            pass  # os.system("./binvox -d 88 -pb " + mesh_filaname.replace("_remesh.obj", "_normalized.obj"))
-        elif platform == "win32":
-            binvox_exe = os.path.join(RIGNET_FOLDER, "binvox.exe")
-            os.system(binvox_exe + " -d 88 " + fo_normalized.name)
-        else:
-            raise Exception('Sorry, we currently only support windows and linux.')
+    # TODO: we might cache the .binvox file somewhere, as in the RigNet quickstart example
+    rignet_path = bpy.context.preferences.addons[__package__].preferences.rignet_path
+    binvox_exe = os.path.join(rignet_path, "binvox")
 
+    if sys.platform.startswith("win"):
+        binvox_exe += ".exe"
+
+    if not os.path.isfile(binvox_exe):
+        os.unlink(fo_normalized.name)
+        clear()
+        raise FileNotFoundError("binvox executable not found in {0}, please check RigNet path in the addon preferences")
+
+    os.system(binvox_exe + " -d 88 " + fo_normalized.name)
     with open(os.path.splitext(fo_normalized.name)[0] + '.binvox', 'rb') as fvox:
         vox = binvox_rw.read_as_3d_array(fvox)
 
@@ -441,8 +428,8 @@ class ArmGenerator(object):
         self._mesh = mesh
 
     def generate(self):
-        arm_data = bpy.data.armatures.new('new_arm')
-        arm_obj = bpy.data.objects.new('new_arm', arm_data)
+        arm_data = bpy.data.armatures.new(self._mesh.name + "_armature")
+        arm_obj = bpy.data.objects.new(arm_data.name, arm_data)
 
         bpy.context.collection.objects.link(arm_obj)
         bpy.context.view_layer.objects.active = arm_obj
@@ -512,29 +499,31 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     # load all weights
     print("loading all networks...")
 
+    model_dir = bpy.context.preferences.addons[__package__].preferences.model_path
+
     jointNet = JOINTNET()
     jointNet.to(device)
     jointNet.eval()
-    jointNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/gcn_meanshift/model_best.pth.tar'))
+    jointNet_checkpoint = torch.load(os.path.join(model_dir, 'gcn_meanshift/model_best.pth.tar'))
     jointNet.load_state_dict(jointNet_checkpoint['state_dict'])
     print("     joint prediction network loaded.")
 
     rootNet = ROOTNET()
     rootNet.to(device)
     rootNet.eval()
-    rootNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/rootnet/model_best.pth.tar'))
+    rootNet_checkpoint = torch.load(os.path.join(model_dir, 'rootnet/model_best.pth.tar'))
     rootNet.load_state_dict(rootNet_checkpoint['state_dict'])
     print("     root prediction network loaded.")
 
     boneNet = BONENET()
     boneNet.to(device)
     boneNet.eval()
-    boneNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/bonenet/model_best.pth.tar'))
+    boneNet_checkpoint = torch.load(os.path.join(model_dir, 'bonenet/model_best.pth.tar'))
     boneNet.load_state_dict(boneNet_checkpoint['state_dict'])
     print("     connection prediction network loaded.")
 
     skinNet = SKINNET(nearest_bone=5, use_Dg=True, use_Lf=True)
-    skinNet_checkpoint = torch.load(os.path.join(RIGNET_FOLDER, 'checkpoints/skinnet/model_best.pth.tar'))
+    skinNet_checkpoint = torch.load(os.path.join(model_dir, 'skinnet/model_best.pth.tar'))
     skinNet.load_state_dict(skinNet_checkpoint['state_dict'])
     skinNet.to(device)
     skinNet.eval()
@@ -566,5 +555,5 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     torch.cuda.empty_cache()
 
 
-def clear():
+def clear():  # TODO: rename to clear_device
     torch.cuda.empty_cache()

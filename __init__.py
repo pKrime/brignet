@@ -29,16 +29,16 @@ bl_info = {
     "category": "Rigging",
 }
 
-
 import bpy
 from . import brignet
-from . import rignetconnect
 from .brignet import BrignetPanel
+from .preferences import BrignetPrefs
 
 
 from importlib import reload
 try:
     reload(brignet)
+    reload(preferences)
 except NameError:
     pass
 
@@ -49,16 +49,28 @@ def register():
     from importlib import reload
     try:
         reload(brignet)
-        reload(rignetconnect)
+        reload(preferences)
     except NameError:
         pass
 
-    #rignetconnect.load_networks()
     brignet.register_properties()
+    bpy.utils.register_class(BrignetPrefs)
     bpy.utils.register_class(BrignetPanel)
+
+    if not preferences.append_rignet():
+        print("RigNet not found, please set in bRigNet preferences")
+    if not preferences.append_modules():
+        print("Modules path not found, please set in bRigNet preferences")
 
 
 def unregister():
-    rignetconnect.clear()
+    try:
+        from . import rignetconnect
+        rignetconnect.clear()
+    except ModuleNotFoundError:
+        # if we have failed to load rignetconnect, we have no device to clear
+        pass
+
     bpy.utils.unregister_class(BrignetPanel)
+    bpy.utils.unregister_class(BrignetPrefs)
     brignet.unregister_properties()
