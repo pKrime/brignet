@@ -1,4 +1,5 @@
 import bpy
+from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
 from .import rigutils
 
 
@@ -30,7 +31,10 @@ class BrigNetPredict(bpy.types.Operator):
             self.report({'WARNING'}, "Some modules not found, please check bRigNet preferences")
             return {'CANCELLED'}
 
-        rignetconnect.predict_rig(wm.brignet_targetmesh, wm.brignet_bandwidth, wm.brignet_threshold/1000,
+        bandwidth = (1 - wm.brignet_density) / 10
+        threshold = wm.brignet_threshold/1000
+
+        rignetconnect.predict_rig(wm.brignet_targetmesh, bandwidth, threshold,
                                   wm.brignet_downsample_skin,
                                   wm.brignet_downsample_decimate,
                                   wm.brignet_downsample_sampling)
@@ -44,7 +48,7 @@ class BrigNetPredict(bpy.types.Operator):
 class BrignetPanel(bpy.types.Panel):
     """Creates a Panel in the scene context of the properties editor"""
     bl_label = "Layout Demo"
-    bl_idname = "SCENE_PT_layout"
+    bl_idname = "RIGNET_PT_layout"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'bRigNet'
@@ -53,7 +57,6 @@ class BrignetPanel(bpy.types.Panel):
         layout = self.layout
 
         wm = context.window_manager
-        scene = context.scene
 
         row = layout.row()
         row.prop(wm, 'brignet_downsample_skin', text='Downsample Skinning')
@@ -71,36 +74,47 @@ class BrignetPanel(bpy.types.Panel):
         row = layout.row()
         row.prop(wm, 'brignet_highrescollection', text='HighRes')
 
-        # Big render button
-        layout.label(text="Big Button:")
         row = layout.row()
         row.operator("object.brignet_predict")
 
         row = layout.row()
-        row.prop(wm, 'brignet_bandwidth', text='BandWidth')
+        row.prop(wm, 'brignet_density', text='Density')
 
         row = layout.row()
         row.prop(wm, 'brignet_threshold', text='Treshold')
 
 
 def register_properties():
-    bpy.types.WindowManager.brignet_downsample_skin = bpy.props.BoolProperty(name="downsample_skinning", default=True)
-    bpy.types.WindowManager.brignet_downsample_decimate = bpy.props.IntProperty(name="downsample_decimate", default=3000)
-    bpy.types.WindowManager.brignet_downsample_sampling = bpy.props.IntProperty(name="downsample_sampling", default=2000)
+    bpy.types.WindowManager.brignet_downsample_skin = BoolProperty(name="downsample_skinning", default=True)
+    bpy.types.WindowManager.brignet_downsample_decimate = IntProperty(name="downsample_decimate", default=3000)
+    bpy.types.WindowManager.brignet_downsample_sampling = IntProperty(name="downsample_sampling", default=1500)
 
+    bpy.types.WindowManager.brignet_targetmesh = PointerProperty(type=bpy.types.Object,
+                                                                 name="bRigNet Target Object",
+                                                                 description="Mesh to use for skin prediction. Keep below 5000 triangles",
+                                                                 poll=lambda self, obj: obj.type == 'MESH' and obj.data is not self)
 
-    bpy.types.WindowManager.brignet_targetmesh = bpy.props.PointerProperty(type=bpy.types.Object,
-                                                                           name="bRigNet Target Object",
-                                                                           description="Mesh to use for skin prediction. Keep below 5000 triangles",
-                                                                           poll=lambda self, obj: obj.type == 'MESH' and obj.data is not self)
-    bpy.types.WindowManager.brignet_highrescollection = bpy.props.PointerProperty(type=bpy.types.Collection,
-                                                                                  name="bRigNet HighRes Objects",
-                                                                                  description="Meshes to use for final skinning")
+    bpy.types.WindowManager.brignet_highrescollection = PointerProperty(type=bpy.types.Collection,
+                                                                        name="bRigNet HighRes Objects",
+                                                                        description="Meshes to use for final skinning")
 
-    bpy.types.WindowManager.brignet_bandwidth = bpy.props.FloatProperty(name="bandwidth", default=0.0429)
-    bpy.types.WindowManager.brignet_threshold = bpy.props.FloatProperty(name="threshold", default=0.75e-2)
+    bpy.types.WindowManager.brignet_density = FloatProperty(name="density", default=0.571, min=0.1, max=1.0,
+                                                            description="Bone Density")
 
-    bpy.utils.register_class(BrigNetPredict)
+    bpy.types.WindowManager.brignet_threshold = FloatProperty(name="threshold", default=0.75e-2,
+                                                              description='Minimum skin weight',
+                                                              min=0.01,
+                                                              max=1.0)
+
+    bpy.types.WindowManager.brignet_obj_path = StringProperty(name='Mesh obj',
+                                                              description='Path to Mesh file',
+                                                              subtype='FILE_PATH')
+
+    bpy.types.WindowManager.brignet_skel_path = StringProperty(name='Skeleton txt',
+                                                               description='Path to Skeleton File',
+                                                               subtype='FILE_PATH')
+
+    bpy.utils.register_class(BrigNetPredict)  # FIXME: not a property
 
 
 def unregister_properties():
@@ -111,5 +125,7 @@ def unregister_properties():
     del bpy.types.WindowManager.brignet_downsample_sampling
     del bpy.types.WindowManager.brignet_targetmesh
     del bpy.types.WindowManager.brignet_highrescollection
-    del bpy.types.WindowManager.brignet_bandwidth
+    del bpy.types.WindowManager.brignet_density
     del bpy.types.WindowManager.brignet_threshold
+    del bpy.types.WindowManager.brignet_obj_path
+    del bpy.types.WindowManager.brignet_skel_path

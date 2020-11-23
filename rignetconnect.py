@@ -31,7 +31,9 @@ from models.PairCls_GCN import PairCls as BONENET
 from models.SKINNING import SKINNET
 
 import bpy
+import bmesh
 import tempfile
+from .rigutils import ArmatureGenerator
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 MESH_NORMALIZED = None
@@ -58,8 +60,18 @@ def create_single_data(mesh_obj):
     :return: wrapped data, voxelized mesh, and geodesic distance matrix of all vertices
     """
 
-    mesh_v = np.asarray([list(v.co) for v in mesh_obj.data.vertices])
-    mesh_f = np.asarray([list(p.vertices) for p in mesh_obj.data.polygons])
+    # triangulate first
+    bm = bmesh.new()
+    bm.from_mesh(mesh_obj.data)
+
+    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+
+    mesh_v = np.asarray([list(v.co) for v in bm.verts])
+    mesh_f = np.asarray([[v.index for v in f.verts] for f in bm.faces])
+
+    bm.free()
 
     mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(mesh_v), o3d.open3d.utility.Vector3iVector(mesh_f))
     mesh.compute_vertex_normals()
@@ -223,11 +235,7 @@ def predict_skeleton(input_data, vox, root_pred_net, bone_pred_net, mesh_filenam
             break
     loadSkel_recur(pred_skel.root, i, None, pred_joints, parent)
     pred_skel.joint_pos = pred_skel.get_joint_dict()
-    # show_mesh_vox(mesh_filename, vox, pred_skel.root)
-    # try:
-    #    img = show_obj_skel(mesh_filename, pred_skel.root)
-    # except:
-    #    print("Visualization is not supported on headless servers. Please consider other headless rendering methods.")
+
     return pred_skel
 
 
@@ -422,74 +430,6 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, sub
     return skel_res
 
 
-class ArmGenerator(object):
-    def __init__(self, info, mesh):
-        self._info = info
-        self._mesh = mesh
-
-    def generate(self):
-        arm_data = bpy.data.armatures.new(self._mesh.name + "_armature")
-        arm_obj = bpy.data.objects.new(arm_data.name, arm_data)
-
-        bpy.context.collection.objects.link(arm_obj)
-        bpy.context.view_layer.objects.active = arm_obj
-        bpy.ops.object.mode_set(mode='EDIT')
-
-        this_level = [self._info.root]
-        hier_level = 1
-        while this_level:
-            next_level = []
-            for p_node in this_level:
-                pos = p_node.pos
-                parent = p_node.parent.name if p_node.parent is not None else None
-
-                e_bone = arm_data.edit_bones.new(p_node.name)
-                if e_bone.name not in self._mesh.vertex_groups:
-                    self._mesh.vertex_groups.new(name=e_bone.name)
-
-                e_bone.head.x, e_bone.head.z, e_bone.head.y = pos[0], pos[2], pos[1]
-
-                if parent:
-                    e_bone.parent = arm_data.edit_bones[parent]
-                    if e_bone.parent.tail == e_bone.head:
-                        e_bone.use_connect = True
-
-                if len(p_node.children) == 1:
-                    pos = p_node.children[0].pos
-                    e_bone.tail.x, e_bone.tail.z, e_bone.tail.y = pos[0], pos[2], pos[1]
-                elif len(p_node.children) > 1:
-                    x_offset = [abs(c_node.pos[0] - pos[0]) for c_node in p_node.children]
-
-                    idx = x_offset.index(min(x_offset))
-                    pos = p_node.children[idx].pos
-                    e_bone.tail.x, e_bone.tail.z, e_bone.tail.y = pos[0], pos[2], pos[1]
-
-                elif e_bone.parent:
-                    offset = e_bone.head - e_bone.parent.head
-                    e_bone.tail = e_bone.head + offset / 2
-                else:
-                    e_bone.tail.x, e_bone.tail.z, e_bone.tail.y = pos[0], pos[2], pos[1]
-                    e_bone.tail.y += .1
-
-                for c_node in p_node.children:
-                    next_level.append(c_node)
-
-            this_level = next_level
-            hier_level += 1
-
-        bpy.ops.object.mode_set(mode='POSE')
-
-        for v_skin in self._info.joint_skin:
-            v_idx = int(v_skin.pop(0))
-
-            for i in range(0, len(v_skin), 2):
-                self._mesh.vertex_groups[v_skin[i]].add([v_idx], float(v_skin[i + 1]), 'REPLACE')
-
-        arm_obj.matrix_world = self._mesh.matrix_world
-        mod = self._mesh.modifiers.new('rignet', 'ARMATURE')
-        mod.object = arm_obj
-
-
 def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decimation=3000, sampling=1500):
     print("predicting rig")
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
@@ -551,9 +491,9 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     for obj in bpy.data.objects:
         obj.select_set(False)
 
-    ArmGenerator(pred_rig, mesh_obj).generate()
+    ArmatureGenerator(pred_rig, mesh_obj).generate()
     torch.cuda.empty_cache()
 
 
-def clear():  # TODO: rename to clear_device
+def clear():
     torch.cuda.empty_cache()

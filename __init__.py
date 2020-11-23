@@ -16,7 +16,6 @@
 #
 # ======================= END GPL LICENSE BLOCK ========================
 
-# <pep8 compliant>
 
 bl_info = {
     "name": "bRigNet",
@@ -30,15 +29,17 @@ bl_info = {
 }
 
 import bpy
-from . import brignet
+from . import brignet, preferences, loadskeleton
 from .brignet import BrignetPanel
 from .preferences import BrignetPrefs
+from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
 
 
 from importlib import reload
 try:
     reload(brignet)
     reload(preferences)
+    reload(loadskeleton)
 except NameError:
     pass
 
@@ -50,16 +51,19 @@ def register():
     try:
         reload(brignet)
         reload(preferences)
+        reload(loadskeleton)
     except NameError:
         pass
 
     brignet.register_properties()
     bpy.utils.register_class(BrignetPrefs)
     bpy.utils.register_class(BrignetPanel)
+    bpy.utils.register_class(LoadRignetSkeleton)
+    bpy.utils.register_class(LoadSkeletonPanel)
 
-    if not preferences.append_rignet():
+    if not BrignetPrefs.append_rignet():
         print("RigNet not found, please set in bRigNet preferences")
-    if not preferences.append_modules():
+    if not BrignetPrefs.append_modules():
         print("Modules path not found, please set in bRigNet preferences")
 
 
@@ -73,4 +77,6 @@ def unregister():
 
     bpy.utils.unregister_class(BrignetPanel)
     bpy.utils.unregister_class(BrignetPrefs)
+    bpy.utils.unregister_class(LoadSkeletonPanel)
+    bpy.utils.unregister_class(LoadRignetSkeleton)
     brignet.unregister_properties()
