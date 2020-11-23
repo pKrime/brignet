@@ -27,7 +27,7 @@ class LoadSkeletonPanel(bpy.types.Panel):
 class LoadRignetSkeleton(bpy.types.Operator):
     """Load characters generated using RigNet from the command line"""
     bl_idname = "object.brignet_load"
-    bl_label = "Load rignet characters"
+    bl_label = "Load rignet character"
 
     @classmethod
     def poll(cls, context):
