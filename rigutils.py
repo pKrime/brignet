@@ -48,7 +48,7 @@ class ArmatureGenerator(object):
         self._info = info
         self._mesh = mesh
 
-    def generate(self):
+    def generate(self, matrix=None):
         basename = self._mesh.name if self._mesh else ""
         arm_data = bpy.data.armatures.new(basename + "_armature")
         arm_obj = bpy.data.objects.new(arm_data.name, arm_data)
@@ -98,6 +98,9 @@ class ArmatureGenerator(object):
 
             this_level = next_level
             hier_level += 1
+
+        if matrix:
+            arm_data.transform(matrix)
 
         bpy.ops.object.mode_set(mode='POSE')
 

@@ -32,6 +32,7 @@ from models.SKINNING import SKINNET
 
 import bpy
 import bmesh
+from mathutils import Matrix
 import tempfile
 from .rigutils import ArmatureGenerator
 
@@ -64,6 +65,13 @@ def create_single_data(mesh_obj):
     bm = bmesh.new()
     bm.from_mesh(mesh_obj.data)
 
+    # rotate -90 deg on X axis
+    mat = Matrix(((1.0, 0.0, 0.0, 0.0),
+                  (0.0, 0.0, 1.0, 0.0),
+                  (0.0, -1.0, 0, 0.0),
+                  (0.0, 0.0, 0.0, 1.0)))
+
+    bmesh.ops.transform(bm, matrix=mat, verts=bm.verts[:])
     bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
@@ -491,7 +499,11 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     for obj in bpy.data.objects:
         obj.select_set(False)
 
-    ArmatureGenerator(pred_rig, mesh_obj).generate()
+    mat = Matrix(((1.0, 0.0, 0.0, 0.0),
+                  (0.0, 0, -1.0, 0.0),
+                  (0.0, 1, 0, 0.0),
+                  (0.0, 0.0, 0.0, 1.0)))
+    ArmatureGenerator(pred_rig, mesh_obj).generate(matrix=mat)
     torch.cuda.empty_cache()
 
 
