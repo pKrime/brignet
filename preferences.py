@@ -13,7 +13,7 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         if not os.path.isdir(env_path):
             return False
 
-        lib_path = os.path.join(env_path, 'lib')
+        lib_path = os.path.join(env_path, 'Lib')
         sitepackages = os.path.join(lib_path, 'site-packages')
 
         if not os.path.isdir(sitepackages):
