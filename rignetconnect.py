@@ -1,5 +1,6 @@
 import os
 import sys
+import subprocess
 
 import trimesh
 import numpy as np
@@ -132,7 +133,7 @@ def create_single_data(mesh_obj):
         clear()
         raise FileNotFoundError("binvox executable not found in {0}, please check RigNet path in the addon preferences")
 
-    os.system(binvox_exe + " -d 88 " + fo_normalized.name)
+    subprocess.call([binvox_exe, "-d", "88", fo_normalized.name])
     with open(os.path.splitext(fo_normalized.name)[0] + '.binvox', 'rb') as fvox:
         vox = binvox_rw.read_as_3d_array(fvox)
 
