@@ -27,8 +27,9 @@ class BrigNetPredict(bpy.types.Operator):
         try:
             from . import rignetconnect
             reload(rignetconnect)
-        except ModuleNotFoundError:
+        except ModuleNotFoundError as e:
             self.report({'WARNING'}, "Some modules not found, please check bRigNet preferences")
+            print(e.args)
             return {'CANCELLED'}
 
         bandwidth = (1 - wm.brignet_density) / 10
