@@ -12,9 +12,13 @@ class BrignetPrefs(bpy.types.AddonPreferences):
 
         if not os.path.isdir(env_path):
             return False
-
-        lib_path = os.path.join(env_path, 'lib')
-        sitepackages = os.path.join(lib_path, 'python3.7', 'site-packages')
+            
+        if sys.platform.startswith("linux"):
+            lib_path = os.path.join(env_path, 'lib')
+            sitepackages = os.path.join(lib_path, 'python3.7', 'site-packages')
+        else:
+            lib_path = os.path.join(env_path, 'Lib'
+            sitepackages = os.path.join(lib_path, 'site-packages')
 
         if not os.path.isdir(sitepackages):
             # not a python path, but the user might be still typing
