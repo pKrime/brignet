@@ -28,11 +28,8 @@ bl_info = {
 }
 
 import bpy
-from . import brignet, preferences, loadskeleton
-from .brignet import BrignetPanel
-from .preferences import BrignetPrefs
-from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
 
+from . import brignet, preferences, loadskeleton
 
 from importlib import reload
 try:
@@ -41,6 +38,11 @@ try:
     reload(loadskeleton)
 except NameError:
     pass
+
+from .brignet import BrignetPanel, BrigNetPredict, BrignetRemesh, BrignetCollection
+from .preferences import BrignetPrefs
+from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
+
 
 
 # REGISTER #
@@ -56,6 +58,9 @@ def register():
 
     brignet.register_properties()
     bpy.utils.register_class(BrignetPrefs)
+    bpy.utils.register_class(BrignetCollection)
+    bpy.utils.register_class(BrignetRemesh)
+    bpy.utils.register_class(BrigNetPredict)
     bpy.utils.register_class(BrignetPanel)
     bpy.utils.register_class(LoadRignetSkeleton)
     bpy.utils.register_class(LoadSkeletonPanel)
@@ -76,6 +81,9 @@ def unregister():
 
     bpy.utils.unregister_class(BrignetPanel)
     bpy.utils.unregister_class(BrignetPrefs)
+    bpy.utils.unregister_class(BrignetCollection)
+    bpy.utils.unregister_class(BrignetRemesh)
+    bpy.utils.unregister_class(BrigNetPredict)
     bpy.utils.unregister_class(LoadSkeletonPanel)
     bpy.utils.unregister_class(LoadRignetSkeleton)
     brignet.unregister_properties()

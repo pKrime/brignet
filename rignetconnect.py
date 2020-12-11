@@ -64,7 +64,16 @@ def create_single_data(mesh_obj):
 
     # triangulate first
     bm = bmesh.new()
-    bm.from_mesh(mesh_obj.data)
+    bm.from_object(mesh_obj, bpy.context.evaluated_depsgraph_get())
+    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+
+    # apply modifiers
+    mesh_obj.data.clear_geometry()
+    for mod in reversed(mesh_obj.modifiers):
+        mesh_obj.modifiers.remove(mod)
+
+    bm.to_mesh(mesh_obj.data)
+    bpy.context.evaluated_depsgraph_get()
 
     # rotate -90 deg on X axis
     mat = Matrix(((1.0, 0.0, 0.0, 0.0),
@@ -73,7 +82,6 @@ def create_single_data(mesh_obj):
                   (0.0, 0.0, 0.0, 1.0)))
 
     bmesh.ops.transform(bm, matrix=mat, verts=bm.verts[:])
-    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
 

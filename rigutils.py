@@ -2,8 +2,7 @@ import bpy
 
 
 def get_armature_modifier(ob):
-    # TODO
-    return ob.modifiers[0]
+    return next((mod for mod in ob.modifiers if mod.type == 'ARMATURE'), None)
 
 
 def copy_weights(ob_list, ob_source, apply_modifier=True):
@@ -51,7 +50,7 @@ class ArmatureGenerator(object):
     def generate(self, matrix=None):
         basename = self._mesh.name if self._mesh else ""
         arm_data = bpy.data.armatures.new(basename + "_armature")
-        arm_obj = bpy.data.objects.new(arm_data.name, arm_data)
+        arm_obj = bpy.data.objects.new('brignet_rig', arm_data)
 
         bpy.context.collection.objects.link(arm_obj)
         bpy.context.view_layer.objects.active = arm_obj

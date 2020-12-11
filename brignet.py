@@ -1,10 +1,73 @@
 import bpy
 from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
 from .import rigutils
-
+from .import meshutils
 
 from importlib import reload
 reload(rigutils)
+reload(meshutils)
+
+
+class BrignetRemesh(bpy.types.Operator):
+    """Create remeshed model from highres objects"""
+    bl_idname = "object.brignet_remesh"
+    bl_label = "Create Remesh model from Collection"
+
+    @classmethod
+    def poll(cls, context):
+        wm = context.window_manager
+        if not wm.brignet_highrescollection:
+            return False
+
+        return True
+
+    def execute(self, context):
+        wm = context.window_manager
+        new_ob = meshutils.mesh_from_collection(wm.brignet_highrescollection, name='brignet_remesh')
+
+        remesh = new_ob.modifiers.new(name='remesh', type='REMESH')
+        remesh.voxel_size = 0.01
+
+        decimate = new_ob.modifiers.new(name='decimate', type='DECIMATE')
+        decimate.use_collapse_triangulate = True
+
+        context.evaluated_depsgraph_get()
+        decimate.ratio = 1800 / decimate.face_count
+
+        wm.brignet_targetmesh = new_ob
+        wm.brignet_highrescollection.hide_viewport = True
+        return {'FINISHED'}
+
+
+class BrignetCollection(bpy.types.Operator):
+    """Create collection from selected objects"""
+    bl_idname = 'collection.brignet_collection'
+    bl_label = 'Create collection from selected objects'
+
+    @classmethod
+    def poll(cls, context):
+        if not context.selected_objects:
+            return False
+        if not next((ob for ob in context.selected_objects if ob.type == 'MESH'), None):
+            return False
+        return True
+
+    def execute(self, context):
+        default_collection = bpy.data.collections['Collection']
+        collection = bpy.data.collections.new("BrignetGeometry")
+        for ob in context.selected_objects:
+            if ob.type != 'MESH':
+                continue
+            collection.objects.link(ob)
+            try:
+                default_collection.objects.unlink(ob)
+            except RuntimeError:
+                pass
+
+        bpy.context.scene.collection.children.link(collection)
+        context.window_manager.brignet_highrescollection = collection
+
+        return {'FINISHED'}
 
 
 class BrigNetPredict(bpy.types.Operator):
@@ -41,6 +104,7 @@ class BrigNetPredict(bpy.types.Operator):
                                   wm.brignet_downsample_sampling)
 
         if wm.brignet_highrescollection:
+            wm.brignet_highrescollection.hide_viewport = False
             rigutils.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
 
         return {'FINISHED'}
@@ -70,13 +134,31 @@ class BrignetPanel(bpy.types.Panel):
             col.prop(wm, 'brignet_downsample_sampling', text='Sampling')
 
         row = layout.row()
-        row.prop(wm, 'brignet_targetmesh', text='Target')
+        col = row.column()
+        col.prop(wm, 'brignet_highrescollection', text='HighRes')
+        col = row.column()
+        col.operator('collection.brignet_collection', text='<-')
 
         row = layout.row()
-        row.prop(wm, 'brignet_highrescollection', text='HighRes')
+        col = row.column()
+        col.prop(wm, 'brignet_targetmesh', text='Target')
+        col = row.column()
+        col.operator('object.brignet_remesh', text='<-')
+
+        if wm.brignet_targetmesh:
+            remesh_mod = next((mod for mod in wm.brignet_targetmesh.modifiers if mod.type == 'REMESH'), None)
+            decimate_mod = next((mod for mod in wm.brignet_targetmesh.modifiers if mod.type == 'DECIMATE'), None)
+            if remesh_mod:
+                row = layout.row()
+                row.prop(remesh_mod, 'voxel_size')
+            if decimate_mod:
+                row = layout.row()
+                row.prop(decimate_mod, 'ratio')
+                row = layout.row()
+                row.label(text='face count: {0}'.format(decimate_mod.face_count))
 
         row = layout.row()
-        row.operator("object.brignet_predict")
+        row.operator('object.brignet_predict')
 
         row = layout.row()
         row.prop(wm, 'brignet_density', text='Density')
@@ -89,6 +171,7 @@ def register_properties():
     bpy.types.WindowManager.brignet_downsample_skin = BoolProperty(name="downsample_skinning", default=True)
     bpy.types.WindowManager.brignet_downsample_decimate = IntProperty(name="downsample_decimate", default=3000)
     bpy.types.WindowManager.brignet_downsample_sampling = IntProperty(name="downsample_sampling", default=1500)
+
 
     bpy.types.WindowManager.brignet_targetmesh = PointerProperty(type=bpy.types.Object,
                                                                  name="bRigNet Target Object",
@@ -104,7 +187,7 @@ def register_properties():
 
     bpy.types.WindowManager.brignet_threshold = FloatProperty(name="threshold", default=0.75e-2,
                                                               description='Minimum skin weight',
-                                                              min=0.01,
+                                                              min=0.01e-2,
                                                               max=1.0)
 
     bpy.types.WindowManager.brignet_obj_path = StringProperty(name='Mesh obj',
@@ -115,12 +198,8 @@ def register_properties():
                                                                description='Path to Skeleton File',
                                                                subtype='FILE_PATH')
 
-    bpy.utils.register_class(BrigNetPredict)  # FIXME: not a property
-
 
 def unregister_properties():
-    bpy.utils.unregister_class(BrigNetPredict)
-
     del bpy.types.WindowManager.brignet_downsample_skin
     del bpy.types.WindowManager.brignet_downsample_decimate
     del bpy.types.WindowManager.brignet_downsample_sampling
