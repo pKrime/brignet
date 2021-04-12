@@ -41,5 +41,7 @@ def mesh_from_collection(collection, name=None):
     return new_ob
 
 
+
+
 if __name__ == '__main__':
     mesh_from_collection(bpy.data.collections['test_collection'])

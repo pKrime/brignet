@@ -2,9 +2,10 @@ import os
 import sys
 import subprocess
 
-import trimesh
+# import trimesh
+# import open3d as o3d
+
 import numpy as np
-import open3d as o3d
 import itertools as it
 
 import torch
@@ -37,8 +38,9 @@ from mathutils import Matrix
 import tempfile
 from .rigutils import ArmatureGenerator
 
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-MESH_NORMALIZED = None
+# MESH_NORMALIZED = None
 
 
 def normalize_obj(mesh_v):
@@ -58,14 +60,13 @@ def normalize_obj(mesh_v):
 def create_single_data(mesh_obj):
     """
     create input data for the network. The data is wrapped by Data structure in pytorch-geometric library
-    :param mesh_filaname: name of the input mesh
+    :param mesh_obj: input mesh
     :return: wrapped data, voxelized mesh, and geodesic distance matrix of all vertices
     """
 
     # triangulate first
     bm = bmesh.new()
     bm.from_object(mesh_obj, bpy.context.evaluated_depsgraph_get())
-    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
 
     # apply modifiers
     mesh_obj.data.clear_geometry()
@@ -74,6 +75,7 @@ def create_single_data(mesh_obj):
 
     bm.to_mesh(mesh_obj.data)
     bpy.context.evaluated_depsgraph_get()
+    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
 
     # rotate -90 deg on X axis
     mat = Matrix(((1.0, 0.0, 0.0, 0.0),
@@ -87,23 +89,24 @@ def create_single_data(mesh_obj):
 
     mesh_v = np.asarray([list(v.co) for v in bm.verts])
     mesh_f = np.asarray([[v.index for v in f.verts] for f in bm.faces])
+    mesh_vn = np.asarray([list(v.normal) for v in bm.verts])
 
     bm.free()
 
-    mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(mesh_v), o3d.open3d.utility.Vector3iVector(mesh_f))
-    mesh.compute_vertex_normals()
-    mesh.compute_triangle_normals()
+    # mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(mesh_v), o3d.open3d.utility.Vector3iVector(mesh_f))
+    # mesh.compute_vertex_normals()
+    # mesh.compute_triangle_normals()
 
     # renew mesh component list with o3d mesh, for consistency
-    mesh_v = np.asarray(mesh.vertices)
-    mesh_vn = np.asarray(mesh.vertex_normals)
-    mesh_f = np.asarray(mesh.triangles)
+    # mesh_v = np.asarray(mesh.vertices)
+    # mesh_vn = np.asarray(mesh.vertex_normals)
+    # mesh_f = np.asarray(mesh.triangles)
 
     mesh_v, translation_normalize, scale_normalize = normalize_obj(mesh_v)
-    mesh_normalized = o3d.geometry.TriangleMesh(vertices=o3d.utility.Vector3dVector(mesh_v),
-                                                triangles=o3d.utility.Vector3iVector(mesh_f))
-    global MESH_NORMALIZED
-    MESH_NORMALIZED = mesh_normalized
+    # mesh_normalized = o3d.geometry.TriangleMesh(vertices=o3d.utility.Vector3dVector(mesh_v),
+    #                                             triangles=o3d.utility.Vector3iVector(mesh_f))
+    # global MESH_NORMALIZED
+    # MESH_NORMALIZED = mesh_normalized
 
     # vertices
     v = np.concatenate((mesh_v, mesh_vn), axis=1)
@@ -127,7 +130,7 @@ def create_single_data(mesh_obj):
     fo_normalized = tempfile.NamedTemporaryFile(suffix='_normalized.obj')
     fo_normalized.close()
 
-    o3d.io.write_triangle_mesh(fo_normalized.name, mesh_normalized)
+    # o3d.io.write_triangle_mesh(fo_normalized.name, mesh_normalized)
 
     # TODO: we might cache the .binvox file somewhere, as in the RigNet quickstart example
     rignet_path = bpy.context.preferences.addons[__package__].preferences.rignet_path
