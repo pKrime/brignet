@@ -1,6 +1,3 @@
-
-from operator import itemgetter
-
 import numpy as np
 from math import sqrt
 
@@ -32,7 +29,7 @@ class Node:
             dists.append(d2)
 
 
-class PointCloud:
+class PointKDtree:
     """uses a k-d tree for storing points."""
     def __init__(self, pts):
         # FIXME: make sure it works with even number of points
@@ -96,7 +93,7 @@ if __name__ == "__main__":
     size = 50
     points = [[random.uniform(0, 1) for d in range(dimensions)] for i in range(size)]
 
-    p_cloud = PointCloud(points)
+    p_cloud = PointKDtree(points)
     pt_idx = randrange(0, size)
     radius = 4.0
 

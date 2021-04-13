@@ -2,20 +2,25 @@
 import copy
 import logging
 import numpy as np
-
-from collections import namedtuple
-from queue import PriorityQueue
 from math import sqrt
 
-from . import point_cloud
+from . import point_utils
 
 from importlib import reload
-reload(point_cloud)
+reload(point_utils)
 
 
-class BrigMesh:
+class QueueEntry:
+    def __init__(self, idx, weight):
+        self.idx = idx
+        self.weight = weight
+
+    def __repr__(self):
+        return f'{self.idx, self.weight}'
+
+
+class MeshSampler:
     def __init__(self, triangles, vertices, v_normals, triangle_areas):
-        #self._mesh = mesh
         self._has_vertex_normals = False
         self._has_vertex_colors = False
 
@@ -36,36 +41,17 @@ class BrigMesh:
     def surface_area(self):
         return sum(self.areas)
 
-    # def triangle_areas(self):
-    #     # TODO area of each triangle
-    #     pass
-
     def compute_triangle_normals(self, normalized=True):
         # TODO
         raise NotImplementedError
 
-    def sample_points_uniformlyImpl(self, number_of_points, use_triang_normal=False, seed=None):
+    def sample_points_uniformlyImpl(self, number_of_points):
         triangle_areas = copy.deepcopy(self.areas)
         surface_area = self.surface_area
 
         triangle_areas[0] /= surface_area
         for i, area in enumerate(triangle_areas[1:]):
             triangle_areas[i + 1] = area / surface_area + triangle_areas[i]
-
-        # mt = np.random.MT19937(seed)
-        # dist = np.random.uniform()
-
-        # pcd = PointCloud()
-        # pcd.points_.resize(number_of_points)
-
-        # if self.has_vertex_colors:
-        #     pcd.normals_.resize(number_of_points)
-        #
-        # if use_triang_normal and self.has_triangle_normals:
-        #     self.compute_triangle_normals(True)
-        #
-        # if self.has_vertex_normals:
-        #     pcd.colors_.resize(number_of_points)
 
         points = []
         for i, triangle in enumerate(self.triangles):
@@ -82,22 +68,11 @@ class BrigMesh:
                               b * self.vertices[triangle[1]] +
                               c * self.vertices[triangle[2]])
 
-                # if use_triang_normal:
-                #     pcd.normals_[i] = self.triangle_normals_[i]
-                # elif self.has_vertex_normals:
-                #     pcd.normals_[i] = a * self.vertex_normals_[triangle[0]] + \
-                #                       b * self.vertex_normals_[triangle[1]] + \
-                #                       c * self.vertex_normals_[triangle[2]]
-                # if self.has_vertex_colors:
-                #     pcd.colors_[i] = a * self.colors_[triangle[0]] + \
-                #                      b * self.colors_[triangle[1]] + \
-                #                      c * self.colors_[triangle[2]]
-
                 i += 1
 
         return points
 
-    def sample_points_poissondisk(self, number_of_points, init_factor=5, given_sample=None, use_triang_normal=False, seed=None):
+    def sample_points_poissondisk(self, number_of_points, init_factor=5):
         logger = logging.getLogger("SamplePointsPoissonDisk")
         if number_of_points < 1:
             logger.error("zero or negative number of points")
@@ -107,22 +82,10 @@ class BrigMesh:
             logger.error("input mesh has no triangles")
             return
 
-        if not given_sample and init_factor < 1:
+        if init_factor < 1:
             logger.error("please provide either a point cloud or an init_factor greater than 0")
-            return
 
-        if given_sample and given_sample.size < number_of_points:
-            logger.error("either pass pcl_init with #points > number_of_points, or init_factor > 1")
-            return
-
-        if not given_sample:
-            pcl = self.sample_points_uniformlyImpl(init_factor * number_of_points, use_triang_normal=use_triang_normal, seed=seed)
-        else:
-            raise NotImplementedError
-            # pcl = PointCloud()
-            # pcl.points_ = point_cloud.points_
-            # pcl.normals_ = point_cloud.normals_
-            # pcl.colors_ = point_cloud.colors_
+        pcl = self.sample_points_uniformlyImpl(init_factor * number_of_points)
 
         # Set-up sample elimination
         alpha = 8    # constant defined in paper
@@ -134,9 +97,8 @@ class BrigMesh:
         r_max = 2 * sqrt((self.surface_area / number_of_points) / (2 * sqrt(3.0)))
         r_min = r_max * beta * (1 - pow(ratio, gamma))
 
-        weights = [0] * pcl_size
         deleted = [False] * pcl_size
-        kdtree = point_cloud.PointCloud(pcl)
+        kdtree = point_utils.PointKDtree(pcl)
 
         def weight_fcn(d2):
             d = sqrt(d2)
@@ -163,21 +125,15 @@ class BrigMesh:
         # init weights and priority queue
         queue = []
 
-        class QueueEntry:
-            def __init__(self, idx, weight):
-                self.idx = idx
-                self.weight = weight
-
-            def __repr__(self):
-                return f'{self.idx, self.weight}'
-
         for idx in range(pcl_size):
             weight = compute_point_weight(idx)
             queue.append(QueueEntry(idx, weight))
 
-        priority = sorted(queue, key=lambda q: q.weight, reverse=True)
+        priority = copy.copy(queue)
         current_number_of_points = pcl_size
         while current_number_of_points > number_of_points:
+            priority.sort(key=lambda q: q.weight)
+
             last = priority.pop()
             weight, pidx = last.weight, last.idx
             deleted[pidx] = True
@@ -188,12 +144,6 @@ class BrigMesh:
 
             for nb, dist in nbs:
                 queue[nb.idx].weight = compute_point_weight(nb.idx)
-
-            priority.sort(key=lambda q: q.weight, reverse=True)
-
-        # update pcl
-        # has_vert_normal = pcl.HasNormals()
-        # has_vert_color = pcl.HasColors()
 
         for i, point in enumerate(pcl):
             if deleted[i]:
