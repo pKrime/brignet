@@ -53,10 +53,11 @@ class MeshSampler:
         for i, area in enumerate(triangle_areas[1:]):
             triangle_areas[i + 1] = area / surface_area + triangle_areas[i]
 
+        point_idx = 0
         points = []
         for i, triangle in enumerate(self.triangles):
             n = round(triangle_areas[i] * number_of_points)
-            while i < n:
+            while point_idx < n:
                 r1 = np.random.uniform()
                 r2 = np.random.uniform()
 
@@ -68,7 +69,7 @@ class MeshSampler:
                               b * self.vertices[triangle[1]] +
                               c * self.vertices[triangle[2]])
 
-                i += 1
+                point_idx += 1
 
         return points
 
