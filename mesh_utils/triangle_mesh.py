@@ -97,43 +97,46 @@ class BrigMesh:
 
         return points
 
-    def sample_points_poissondisk(self, number_of_points, init_factor=5, point_cloud=None, use_triang_normal=False, seed=None):
+    def sample_points_poissondisk(self, number_of_points, init_factor=5, given_sample=None, use_triang_normal=False, seed=None):
         logger = logging.getLogger("SamplePointsPoissonDisk")
         if number_of_points < 1:
             logger.error("zero or negative number of points")
             return
 
-        if not self.triangles:
+        if not self.triangles.any:
             logger.error("input mesh has no triangles")
             return
 
-        if not point_cloud and init_factor < 1:
+        if not given_sample and init_factor < 1:
             logger.error("please provide either a point cloud or an init_factor greater than 0")
             return
 
-        if point_cloud and point_cloud.size < number_of_points:
+        if given_sample and given_sample.size < number_of_points:
             logger.error("either pass pcl_init with #points > number_of_points, or init_factor > 1")
             return
 
-        if not point_cloud:
+        if not given_sample:
             pcl = self.sample_points_uniformlyImpl(init_factor * number_of_points, use_triang_normal=use_triang_normal, seed=seed)
         else:
-            pcl = PointCloud()
-            pcl.points_ = point_cloud.points_
-            pcl.normals_ = point_cloud.normals_
-            pcl.colors_ = point_cloud.colors_
+            raise NotImplementedError
+            # pcl = PointCloud()
+            # pcl.points_ = point_cloud.points_
+            # pcl.normals_ = point_cloud.normals_
+            # pcl.colors_ = point_cloud.colors_
 
         # Set-up sample elimination
         alpha = 8    # constant defined in paper
         beta = 0.5   # constant defined in paper
         gamma = 1.5  # constant defined in paper
-        ratio = number_of_points / pcl.points_.size()
-        r_max = 2 * sqrt( (self.surface_area / number_of_points) / (2 * sqrt(3.0)))
+
+        pcl_size = len(pcl)
+        ratio = number_of_points / pcl_size
+        r_max = 2 * sqrt((self.surface_area / number_of_points) / (2 * sqrt(3.0)))
         r_min = r_max * beta * (1 - pow(ratio, gamma))
 
-        weights = [0] * pcl.points_.size()
-        deleted = [False] * pcl.points_.size()
-        kdtree = KDTreeFlann(pcl)
+        weights = [0] * pcl_size
+        deleted = [False] * pcl_size
+        kdtree = point_cloud.PointCloud(pcl)
 
         def weight_fcn(d2):
             d = sqrt(d2)
@@ -143,59 +146,57 @@ class BrigMesh:
             return pow(1 - d / r_max, alpha)
 
         def compute_point_weight(pidx0):
-            nbs = []  # indices of neighbours
-            dists2 = []
-            kdtree.SearchRadius(pcl.points_[pidx0], r_max, nbs, dists2)
+            nbs = kdtree.get_points(pcl[pidx0], r_max)
             weight = 0
 
-            for i, pidx1 in enumerate(nbs):
+            for neighbour, dist2 in nbs:
                 # only count weights if not the same point if not deleted
-                if pidx1 == pidx0:
+                if neighbour.idx == pidx0:
                     continue
-                if deleted[pidx1]:
+                if deleted[neighbour.idx]:
                     continue
-                weight += weight_fcn(dists2[i])
 
-            weights[pidx0] = weight
+                weight += weight_fcn(dist2)
 
+            return weight
 
         # init weights and priority queue
-        QueueEntry = namedtuple('QueueEntry', 'idx weight')
-        # order points per weight, lower weights last so they can be popped
-        priority = PriorityQueue()
-        for idx in pcl.points_:
-            priority.put((idx, compute_point_weight(idx)))
+        queue = []
 
-        current_number_of_points = len(pcl.points_)
+        class QueueEntry:
+            def __init__(self, idx, weight):
+                self.idx = idx
+                self.weight = weight
+
+            def __repr__(self):
+                return f'{self.idx, self.weight}'
+
+        for idx in range(pcl_size):
+            weight = compute_point_weight(idx)
+            queue.append(QueueEntry(idx, weight))
+
+        priority = sorted(queue, key=lambda q: q.weight, reverse=True)
+        current_number_of_points = pcl_size
         while current_number_of_points > number_of_points:
-
-            pidx, weight = priority.get()
+            last = priority.pop()
+            weight, pidx = last.weight, last.idx
             deleted[pidx] = True
             current_number_of_points -= 1
 
             # update weights
-            nbs = []
-            dists2 = []
-            kdtree.SearchRadius(pcl.points_[pidx], r_max, nbs, dists2)
+            nbs = kdtree.get_points(pcl[pidx], r_max)
 
-            for nb in nbs:
-                compute_point_weight(nb)
-                priority.put(nb, compute_point_weight(nb))
+            for nb, dist in nbs:
+                queue[nb.idx].weight = compute_point_weight(nb.idx)
+
+            priority.sort(key=lambda q: q.weight, reverse=True)
 
         # update pcl
-        has_vert_normal = pcl.HasNormals()
-        has_vert_color = pcl.HasColors()
-        next_free = 0
+        # has_vert_normal = pcl.HasNormals()
+        # has_vert_color = pcl.HasColors()
 
-        for i, point in pcl.points_:
+        for i, point in enumerate(pcl):
             if deleted[i]:
                 continue
 
-            pcl.points_[next_free] = point
-            if has_vert_normal:
-                pcl.normals_[next_free] = pcl.normals_[i]
-            if has_vert_color:
-                pcl.colors_[next_free] = pcl.colors_[i]
-
-        pcl.resize(next_free)
-        return pcl
+            yield point
