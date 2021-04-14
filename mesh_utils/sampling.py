@@ -1,13 +1,16 @@
 
 import copy
 import logging
-import numpy as np
 from math import sqrt
+import numpy as np
+from scipy.sparse import lil_matrix
+from scipy.sparse.csgraph import dijkstra
+import time
 
-from . import point_utils
+from . import pointsearch
 
 from importlib import reload
-reload(point_utils)
+reload(pointsearch)
 
 
 class QueueEntry:
@@ -55,6 +58,7 @@ class MeshSampler:
 
         point_idx = 0
         points = []
+        normals = []
         for i, triangle in enumerate(self.triangles):
             n = round(triangle_areas[i] * number_of_points)
             while point_idx < n:
@@ -69,9 +73,13 @@ class MeshSampler:
                               b * self.vertices[triangle[1]] +
                               c * self.vertices[triangle[2]])
 
+                normals.append(a * self.v_normals[triangle[0]] +
+                               b * self.v_normals[triangle[1]] +
+                               c * self.v_normals[triangle[2]])
+
                 point_idx += 1
 
-        return points
+        return points, normals
 
     def sample_points_poissondisk(self, number_of_points, init_factor=5):
         logger = logging.getLogger("SamplePointsPoissonDisk")
@@ -86,20 +94,20 @@ class MeshSampler:
         if init_factor < 1:
             logger.error("please provide either a point cloud or an init_factor greater than 0")
 
-        pcl = self.sample_points_uniformlyImpl(init_factor * number_of_points)
+        all_points, normals = self.sample_points_uniformlyImpl(init_factor * number_of_points)
 
         # Set-up sample elimination
         alpha = 8    # constant defined in paper
         beta = 0.5   # constant defined in paper
         gamma = 1.5  # constant defined in paper
 
-        pcl_size = len(pcl)
+        pcl_size = len(all_points)
         ratio = number_of_points / pcl_size
         r_max = 2 * sqrt((self.surface_area / number_of_points) / (2 * sqrt(3.0)))
         r_min = r_max * beta * (1 - pow(ratio, gamma))
 
         deleted = [False] * pcl_size
-        kdtree = point_utils.PointKDtree(pcl)
+        kdtree = pointsearch.PointKDtree(all_points)  # TODO: use mathutils.kdtree
 
         def weight_fcn(d2):
             d = sqrt(d2)
@@ -109,7 +117,7 @@ class MeshSampler:
             return pow(1 - d / r_max, alpha)
 
         def compute_point_weight(pidx0):
-            nbs = kdtree.get_points(pcl[pidx0], r_max)
+            nbs = kdtree.get_points(all_points[pidx0], r_max)
             weight = 0
 
             for neighbour, dist2 in nbs:
@@ -141,13 +149,55 @@ class MeshSampler:
             current_number_of_points -= 1
 
             # update weights
-            nbs = kdtree.get_points(pcl[pidx], r_max)
+            nbs = kdtree.get_points(all_points[pidx], r_max)
 
             for nb, dist in nbs:
                 queue[nb.idx].weight = compute_point_weight(nb.idx)
 
-        for i, point in enumerate(pcl):
+        for i, point in enumerate(all_points):
             if deleted[i]:
                 continue
 
-            yield point
+            yield point, normals[i]
+
+    def calc_geodesic(self, samples=1000):
+        # RigNet uses 4000 samples, not sure this script can handle that.
+
+        sampled = [(pt, normal) for pt, normal in self.sample_points_poissondisk(samples)]
+        sample_points, sample_normals = list(zip(*sampled))
+
+        pts = np.asarray(sample_points)
+        pts_normal = np.asarray(sample_normals)
+
+        time1 = time.time()
+        N = len(pts)
+        verts_dist = np.sqrt(np.sum((pts[np.newaxis, ...] - pts[:, np.newaxis, :]) ** 2, axis=2))
+        verts_nn = np.argsort(verts_dist, axis=1)
+        conn_matrix = lil_matrix((N, N), dtype=np.float32)
+
+        for p in range(N):
+            nn_p = verts_nn[p, 1:6]
+            norm_nn_p = np.linalg.norm(pts_normal[nn_p], axis=1)
+            norm_p = np.linalg.norm(pts_normal[p])
+            cos_similar = np.dot(pts_normal[nn_p], pts_normal[p]) / (norm_nn_p * norm_p + 1e-10)
+            nn_p = nn_p[cos_similar > -0.5]
+            conn_matrix[p, nn_p] = verts_dist[p, nn_p]
+        [dist, predecessors] = dijkstra(conn_matrix, directed=False, indices=range(N),
+                                        return_predecessors=True, unweighted=False)
+
+        # replace inf distance with euclidean distance + 8
+        # 6.12 is the maximal geodesic distance without considering inf, I add 8 to be safer.
+        inf_pos = np.argwhere(np.isinf(dist))
+        if len(inf_pos) > 0:
+            euc_distance = np.sqrt(np.sum((pts[np.newaxis, ...] - pts[:, np.newaxis, :]) ** 2, axis=2))
+            dist[inf_pos[:, 0], inf_pos[:, 1]] = 8.0 + euc_distance[inf_pos[:, 0], inf_pos[:, 1]]
+
+        verts = self.vertices
+        vert_pts_distance = np.sqrt(np.sum((verts[np.newaxis, ...] - pts[:, np.newaxis, :]) ** 2, axis=2))
+        vert_pts_nn = np.argmin(vert_pts_distance, axis=0)
+        surface_geodesic = dist[vert_pts_nn, :][:, vert_pts_nn]
+        time2 = time.time()
+        logger = logging.getLogger("SamplePointsPoissonDisk")
+        logger.debug('surface geodesic calculation: {} seconds'.format((time2 - time1)))
+
+        return surface_geodesic
