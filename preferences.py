@@ -11,6 +11,7 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         env_path = bpy.context.preferences.addons[__package__].preferences.modules_path
 
         if not os.path.isdir(env_path):
+            print(f'{env_path} is not a directory, no path added')
             return False
             
         if sys.platform.startswith("linux"):
@@ -22,6 +23,7 @@ class BrignetPrefs(bpy.types.AddonPreferences):
 
         if not os.path.isdir(sitepackages):
             # not a python path, but the user might be still typing
+            print(f'{sitepackages} not a directory, no path added')
             return False
 
         platformpath = os.path.join(sitepackages, sys.platform)
@@ -35,11 +37,14 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         for mod_path in mod_paths:
             if not os.path.isdir(mod_path):
                 # TODO: warning
+                print(f'{mod_path} not a directory, skipping')
                 continue
             if mod_path not in sys.path:
+                print(f'adding {mod_path}')
                 sys.path.append(mod_path)
 
         sys.path.append(env_path)
+        print(f'adding {env_path}')
         return True
 
     @staticmethod

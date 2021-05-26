@@ -87,13 +87,13 @@ class BrigNetPredict(bpy.types.Operator):
         wm = context.window_manager
         rigutils.remove_modifiers(wm.brignet_targetmesh, type_list=('ARMATURE',))
 
-        try:
-            from . import rignetconnect
-            reload(rignetconnect)
-        except ModuleNotFoundError as e:
-            self.report({'WARNING'}, "Some modules not found, please check bRigNet preferences")
-            print(e.args)
-            return {'CANCELLED'}
+        # try:
+        from . import rignetconnect
+        reload(rignetconnect)
+        # except ModuleNotFoundError as e:
+        #     self.report({'WARNING'}, "Some modules not found, please check bRigNet preferences")
+        #     print(e.args)
+        #     return {'CANCELLED'}
 
         bandwidth = (1 - wm.brignet_density) / 10
         threshold = wm.brignet_threshold/1000
