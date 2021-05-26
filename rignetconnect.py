@@ -162,7 +162,7 @@ def create_single_data(mesh_obj):
     print("     gathering topological edges.")
     tpl_e = get_tpl_edges(mesh_v, mesh_f).T
     tpl_e = torch.from_numpy(tpl_e).long()
-    tpl_e = add_self_loops(tpl_e, num_nodes=v.size(0))
+    tpl_e, _ = add_self_loops(tpl_e, num_nodes=v.size(0))
     # surface geodesic distance matrix
     print("     calculating surface geodesic matrix.")
     mesh_sampler = mesh_sampling.MeshSampler(mesh_f, mesh_v, mesh_vn, tri_areas)
@@ -171,9 +171,8 @@ def create_single_data(mesh_obj):
     print("     gathering geodesic edges.")
     geo_e = get_geo_edges(surface_geodesic, mesh_v).T
     geo_e = torch.from_numpy(geo_e).long()
-    geo_e = add_self_loops(geo_e, num_nodes=v.size(0))
+    geo_e, _ = add_self_loops(geo_e, num_nodes=v.size(0))
     # batch
-    # batch = np.zeros(len(v), dtype=np.int64)
     batch = torch.zeros(len(v), dtype=torch.long)
     # voxel
     fo_normalized = tempfile.NamedTemporaryFile(suffix='_normalized.obj')
@@ -190,7 +189,7 @@ def create_single_data(mesh_obj):
 
     if not os.path.isfile(binvox_exe):
         os.unlink(fo_normalized.name)
-        # clear()
+        clear()
         raise FileNotFoundError("binvox executable not found in {0}, please check RigNet path in the addon preferences")
 
     subprocess.call([binvox_exe, "-d", "88", fo_normalized.name])
@@ -199,7 +198,6 @@ def create_single_data(mesh_obj):
 
     os.unlink(fo_normalized.name)
 
-    # data = geo_utils.Data(x=v[:, 3:6], pos=v[:, 0:3], tpl_edge_index=tpl_e, geo_edge_index=geo_e, batch=batch)
     data = Data(x=v[:, 3:6], pos=v[:, 0:3], tpl_edge_index=tpl_e, geo_edge_index=geo_e, batch=batch)
     return data, vox, surface_geodesic, translation_normalize, scale_normalize
 
@@ -405,29 +403,19 @@ def calc_pts2bone_visible_mat(bvhtree, origins, ends):
     :param ends: ends of the rays, together with origins, we can decide the direction of the ray.
     :return: binary visibility matrix (n*m), where 1 indicate the n-th surface point is visible to the m-th ray
     '''
-    ray_dir = ends - origins
-    # RayMeshIntersector = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
-    # locations, index_ray, index_tri = RayMeshIntersector.intersects_location(origins, ray_dir + 1e-15)
-    locations_per_ray = []
-    for origin in origins:
-        location, normal, index, distance = bvhtree.ray_cast(origin, ray_dir + 1e-15)
-        if location:
-            locations_per_ray.append(location)
+    ray_dirs = ends - origins
 
-    # locations_per_ray = [locations[index_ray == i] for i in range(len(ray_dir))]
-    min_hit_distance = []
-    for i in range(len(locations_per_ray)):
-        if len(locations_per_ray[i]) == 0:
-            min_hit_distance.append(np.linalg.norm(ray_dir[i]))
-        else:
-            min_hit_distance.append(np.min(np.linalg.norm(locations_per_ray[i] - origins[i], axis=1)))
-    min_hit_distance = np.array(min_hit_distance)
-    distance = np.linalg.norm(ray_dir, axis=1)
-    vis_mat = (np.abs(min_hit_distance - distance) < 1e-4)
+    distances = []
+    for ray_dir, origin in zip(ray_dirs, origins):
+        location, normal, index, distance = bvhtree.ray_cast(origin, ray_dir + 1e-15)
+        distances.append(distance if distance else 0)
+
+    min_hit_distance = np.array(distances)
+    vis_mat = (np.abs(min_hit_distance) < 1e-4)
     return vis_mat
 
 
-def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, use_sampling=False, decimation=3000, sampling=1500):
+def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=False, decimation=3000, sampling=1500):
     """
     calculate volumetric geodesic distance from vertices to each bones
     :param bones: B*6 numpy array where each row stores the starting and ending joint position of a bone
@@ -437,29 +425,13 @@ def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, use_sampling=False, 
     :return: an approaximate volumetric geodesic distance matrix V*B, were (v,b) is the distance from vertex v to bone b
     """
 
-    # if use_sampling:
-    #     mesh0 = MESH_NORMALIZED
-    #     mesh0 = mesh0.simplify_quadric_decimation(decimation)
-    #
-    #     fo_simplified = tempfile.NamedTemporaryFile(suffix='_simplified.obj')
-    #     fo_simplified.close()
-    #     o3d.io.write_triangle_mesh(fo_simplified.name, mesh0)
-    #     mesh_trimesh = trimesh.load(fo_simplified.name)
-    #     os.unlink(fo_simplified.name)
-    #
-    #     subsamples_ids = np.random.choice(len(mesh_v), np.min((len(mesh_v), sampling)), replace=False)
-    #     subsamples = mesh_v[subsamples_ids, :]
-    #     surface_geodesic = surface_geodesic[subsamples_ids, :][:, subsamples_ids]
-    # else:
-    #     fo = tempfile.NamedTemporaryFile(suffix='.obj')
-    #     fo.close()
-    #     o3d.io.write_triangle_mesh(fo.name, MESH_NORMALIZED)
-    #     mesh_trimesh = trimesh.load(fo.name)
-    #     os.unlink(fo.name)
-    #     subsamples = mesh_v
-
-    subsamples = mesh_v
-    bvh_tree = BVHTree.FromPolygons(subsamples, MESH_F, all_triangles=False, epsilon=0.0)
+    if use_sampling:
+        # TODO: perhaps not required with blender's bvh tree
+        # will have to decimate the mesh otherwise
+        # also, this should rather be done outside the function
+        subsamples = mesh_v
+    else:
+        subsamples = mesh_v
 
     origins, ends, pts_bone_dist = pts2line(subsamples, bones)
     pts_bone_visibility = calc_pts2bone_visible_mat(bvh_tree, origins, ends)
@@ -495,7 +467,7 @@ def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, use_sampling=False, 
     return visible_matrix
 
 
-def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, subsampling=False, decimation=3000, sampling=1500):
+def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh_tree, subsampling=False, decimation=3000, sampling=1500):
     """
     predict skinning
     :param input_data: wrapped input data
@@ -511,7 +483,7 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, sub
     mesh_v = input_data.pos.data.cpu().numpy()
     print("     calculating volumetric geodesic distance from vertices to bone. This step takes some time...")
 
-    geo_dist = calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, use_sampling=subsampling, decimation=decimation, sampling=sampling)
+    geo_dist = calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=subsampling, decimation=decimation, sampling=sampling)
     input_samples = []  # joint_pos (x, y, z), (bone_id, 1/D)*5
     loss_mask = []
     skin_nn = []
@@ -616,7 +588,8 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     # pred_skeleton.normalize(scale_normalize, -translation_normalize)
 
     print("predicting skinning")
-    pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, subsampling=downsample_skinning, decimation=decimation, sampling=sampling)
+    bvh_tree = BVHTree.FromObject(mesh_obj, bpy.context.evaluated_depsgraph_get())
+    pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, bvh_tree, subsampling=downsample_skinning, decimation=decimation, sampling=sampling)
 
     # here we reverse the normalization to the original scale and position
     pred_rig.normalize(scale_normalize, -translation_normalize)
