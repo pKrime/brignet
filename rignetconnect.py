@@ -1,6 +1,4 @@
 import os
-import sys
-import subprocess
 
 import numpy as np
 import itertools as it
@@ -9,20 +7,16 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.utils import add_self_loops
 
-from utils import binvox_rw
 from utils.rig_parser import Skel, Info
 from utils.tree_utils import TreeNode
-from utils.io_utils import assemble_skel_skin
+# from utils.io_utils import assemble_skel_skin
 from utils.cluster_utils import meanshift_cluster, nms_meanshift
 from utils.mst_utils import increase_cost_for_outside_bone, primMST_symmetry, loadSkel_recur, inside_check, flip
 from utils.mst_utils import sample_on_bone
 
-from geometric_proc.common_ops import get_bones
+# from geometric_proc.common_ops import get_bones
 
-# from gen_dataset import get_tpl_edges
-# from mst_generate import sample_on_bone #, getInitId
-
-from run_skinning import post_filter
+# from run_skinning import post_filter
 
 from models.GCN import JOINTNET_MASKNET_MEANSHIFT as JOINTNET
 from models.ROOT_GCN import ROOTNET
@@ -32,16 +26,15 @@ from models.SKINNING import SKINNET
 import bpy
 import bmesh
 from mathutils import Matrix
+from mathutils import Vector
 from mathutils.bvhtree import BVHTree
-import tempfile
-from .rigutils import ArmatureGenerator
+from random import random
 
+from .rigutils import ArmatureGenerator
 from .mesh_utils import sampling as mesh_sampling
-from .mesh_utils import geometry as geo_utils
-from .mesh_utils import binvox_rw
+
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# MESH_NORMALIZED = None
 
 
 def getInitId(data, model):
@@ -111,95 +104,182 @@ def get_tpl_edges(remesh_obj_v, remesh_obj_f):
     edge_index = np.concatenate(edge_index, axis=0)
     return edge_index
 
-MESH_F = None
 
-def create_single_data(mesh_obj):
+class Voxels:
+    """ Holds a binvox model.
+    data is either a three-dimensional numpy boolean array (dense representation)
+    or a two-dimensional numpy float array (coordinate representation).
+
+    dims, translate and scale are the model metadata.
+
+    dims are the voxel dimensions, e.g. [32, 32, 32] for a 32x32x32 model.
+
+    scale and translate relate the voxels to the original model coordinates.
+
+    To translate voxel coordinates i, j, k to original coordinates x, y, z:
+
+    x_n = (i+.5)/dims[0]
+    y_n = (j+.5)/dims[1]
+    z_n = (k+.5)/dims[2]
+    x = scale*x_n + translate[0]
+    y = scale*y_n + translate[1]
+    z = scale*z_n + translate[2]
+
+    """
+
+    def __init__(self, data, dims, translate, scale, axis_order):
+        self.data = data
+        self.dims = dims
+        self.translate = translate
+        self.scale = scale
+        assert (axis_order in ('xzy', 'xyz'))
+        self.axis_order = axis_order
+
+    def clone(self):
+        data = self.data.copy()
+        dims = self.dims[:]
+        translate = self.translate[:]
+        return Voxels(data, dims, translate, self.scale, self.axis_order)
+
+
+class NormalizedMeshData:
+    def __init__(self, mesh_obj):
+        # triangulate first
+        bm = bmesh.new()
+        bm.from_object(mesh_obj, bpy.context.evaluated_depsgraph_get())
+
+        # apply modifiers
+        mesh_obj.data.clear_geometry()
+        for mod in reversed(mesh_obj.modifiers):
+            mesh_obj.modifiers.remove(mod)
+
+        bm.to_mesh(mesh_obj.data)
+        bpy.context.evaluated_depsgraph_get()
+        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+
+        # rotate -90 deg on X axis
+        mat = Matrix(((1.0, 0.0, 0.0, 0.0),
+                      (0.0, 0.0, 1.0, 0.0),
+                      (0.0, -1.0, 0, 0.0),
+                      (0.0, 0.0, 0.0, 1.0)))
+
+        bmesh.ops.transform(bm, matrix=mat, verts=bm.verts[:])
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        mesh_v = np.asarray([list(v.co) for v in bm.verts])
+        self.mesh_f = np.asarray([[v.index for v in f.verts] for f in bm.faces])
+
+        self.mesh_vn = np.asarray([list(v.normal) for v in bm.verts])
+        self.tri_areas = [t.calc_area() for t in bm.faces]
+
+        bm.free()
+
+        self.mesh_v, self.translation_normalize, self.scale_normalize = normalize_obj(mesh_v)
+        self._bvh_tree = BVHTree.FromPolygons(self.mesh_v.tolist(), self.mesh_f.tolist(), all_triangles=True)
+
+    @property
+    def bound_min(self):
+        return -0.5, 0.0, min(self.mesh_v[:, 2])
+
+    @property
+    def bound_max(self):
+        return 0.5, 1.0, max(self.mesh_v[:, 2])
+
+    @property
+    def bvh_tree(self):
+        return self._bvh_tree
+
+    def is_inside_volume(self, vector):
+        # in some cases multiple tests have to done
+        # to reduce the probability for errors
+        direction1 = Vector((random(), random(), random())).normalized()
+        direction2 = Vector((random(), random(), random())).normalized()
+        direction3 = Vector((random(), random(), random())).normalized()
+
+        hits1 = self._count_hits(vector, direction1)
+        if hits1 == 0:
+            return False
+        if hits1 == 1:
+            return True
+
+        hits2 = self._count_hits(vector, direction2)
+        if hits1 % 2 == hits2 % 2:
+            return hits1 % 2 == 1
+
+        hits3 = self._count_hits(vector, direction3)
+        return hits3 % 2 == 1
+
+    def _count_hits(self, start, direction):
+        hits = 0
+        offset = direction * 0.0001
+        bvh_tree = self.bvh_tree
+
+        location = bvh_tree.ray_cast(start, direction)[0]
+
+        while location is not None:
+            hits += 1
+            location = bvh_tree.ray_cast(location + offset, direction)[0]
+
+        return hits
+
+    def _on_surface(self, point, radius):
+        return self.bvh_tree.find_nearest(point, radius)
+
+    def voxels(self, resolution=88):
+        voxels = np.zeros([resolution, resolution, resolution], dtype=bool)
+        res_x, res_y, res_z = voxels.shape  # redundant, but might get useful if we change uniform res in the future
+
+        vox_size = 1.0 / resolution
+        vox_radius = vox_size / 2.0
+
+        bound_min = self.bound_min
+        min_x, min_y, min_z = bound_min
+
+        z_co = min_z + vox_radius
+        for z in range(res_z):
+            y_co = min_y + vox_radius
+            for y in range(res_y):
+                x_co = min_x + vox_radius
+                for x in range(res_x):
+                    voxels[x, y, z] = self.is_inside_volume(Vector((x_co, y_co, z_co)))
+
+                    x_co += vox_size
+                y_co += vox_size
+            z_co += vox_size
+
+        return Voxels(voxels, voxels.shape, bound_min, 1.0, 'xyz')
+
+
+def create_single_data(mesh_data):
     """
     create input data for the network. The data is wrapped by Data structure in pytorch-geometric library
     :param mesh_obj: input mesh
     :return: wrapped data, voxelized mesh, and geodesic distance matrix of all vertices
     """
 
-    # triangulate first
-    bm = bmesh.new()
-    bm.from_object(mesh_obj, bpy.context.evaluated_depsgraph_get())
-
-    # apply modifiers
-    mesh_obj.data.clear_geometry()
-    for mod in reversed(mesh_obj.modifiers):
-        mesh_obj.modifiers.remove(mod)
-
-    bm.to_mesh(mesh_obj.data)
-    bpy.context.evaluated_depsgraph_get()
-    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
-
-    # rotate -90 deg on X axis
-    mat = Matrix(((1.0, 0.0, 0.0, 0.0),
-                  (0.0, 0.0, 1.0, 0.0),
-                  (0.0, -1.0, 0, 0.0),
-                  (0.0, 0.0, 0.0, 1.0)))
-
-    bmesh.ops.transform(bm, matrix=mat, verts=bm.verts[:])
-    bm.verts.ensure_lookup_table()
-    bm.faces.ensure_lookup_table()
-
-    mesh_v = np.asarray([list(v.co) for v in bm.verts])
-    mesh_f = np.asarray([[v.index for v in f.verts] for f in bm.faces])
-    global MESH_F
-    MESH_F = mesh_f
-
-    mesh_vn = np.asarray([list(v.normal) for v in bm.verts])
-    tri_areas = [t.calc_area() for t in bm.faces]
-
-    bm.free()
-
-    mesh_v, translation_normalize, scale_normalize = normalize_obj(mesh_v)
-
     # vertices
-    v = np.concatenate((mesh_v, mesh_vn), axis=1)
+    v = np.concatenate((mesh_data.mesh_v, mesh_data.mesh_vn), axis=1)
     v = torch.from_numpy(v).float()
     # topology edges
     print("     gathering topological edges.")
-    tpl_e = get_tpl_edges(mesh_v, mesh_f).T
+    tpl_e = get_tpl_edges(mesh_data.mesh_v, mesh_data.mesh_f).T
     tpl_e = torch.from_numpy(tpl_e).long()
     tpl_e, _ = add_self_loops(tpl_e, num_nodes=v.size(0))
     # surface geodesic distance matrix
     print("     calculating surface geodesic matrix.")
-    mesh_sampler = mesh_sampling.MeshSampler(mesh_f, mesh_v, mesh_vn, tri_areas)
+    mesh_sampler = mesh_sampling.MeshSampler(mesh_data.mesh_f, mesh_data.mesh_v, mesh_data.mesh_vn, mesh_data.tri_areas)
     surface_geodesic = mesh_sampler.calc_geodesic()
     # geodesic edges
     print("     gathering geodesic edges.")
-    geo_e = get_geo_edges(surface_geodesic, mesh_v).T
+    geo_e = get_geo_edges(surface_geodesic, mesh_data.mesh_v).T
     geo_e = torch.from_numpy(geo_e).long()
     geo_e, _ = add_self_loops(geo_e, num_nodes=v.size(0))
     # batch
     batch = torch.zeros(len(v), dtype=torch.long)
-    # voxel
-    fo_normalized = tempfile.NamedTemporaryFile(suffix='_normalized.obj')
-    fo_normalized.close()
-
-    obj_simple_export(fo_normalized.name, mesh_v, mesh_f)
-
-    # TODO: we might cache the .binvox file somewhere, as in the RigNet quickstart example
-    rignet_path = bpy.context.preferences.addons[__package__].preferences.rignet_path
-    binvox_exe = os.path.join(rignet_path, "binvox")
-
-    if sys.platform.startswith("win"):
-        binvox_exe += ".exe"
-
-    if not os.path.isfile(binvox_exe):
-        os.unlink(fo_normalized.name)
-        clear()
-        raise FileNotFoundError("binvox executable not found in {0}, please check RigNet path in the addon preferences")
-
-    subprocess.call([binvox_exe, "-d", "88", fo_normalized.name])
-    with open(os.path.splitext(fo_normalized.name)[0] + '.binvox', 'rb') as fvox:
-        vox = binvox_rw.read_as_3d_array(fvox)
-
-    os.unlink(fo_normalized.name)
 
     data = Data(x=v[:, 3:6], pos=v[:, 0:3], tpl_edge_index=tpl_e, geo_edge_index=geo_e, batch=batch)
-    return data, vox, surface_geodesic, translation_normalize, scale_normalize
+    return data, surface_geodesic
 
 
 def predict_joints(input_data, vox, joint_pred_net, threshold, bandwidth=None, mesh_filename=None):
@@ -307,62 +387,6 @@ def predict_skeleton(input_data, vox, root_pred_net, bone_pred_net, mesh_filenam
     return pred_skel
 
 
-# def calc_geodesic_matrix(bones, mesh_v, surface_geodesic, mesh_filename, subsampling=False):
-#     """
-#     calculate volumetric geodesic distance from vertices to each bones
-#     :param bones: B*6 numpy array where each row stores the starting and ending joint position of a bone
-#     :param mesh_v: V*3 mesh vertices
-#     :param surface_geodesic: geodesic distance matrix of all vertices
-#     :param mesh_filename: mesh filename
-#     :return: an approaximate volumetric geodesic distance matrix V*B, were (v,b) is the distance from vertex v to bone b
-#     """
-#
-#     if subsampling:
-#         mesh0 = o3d.io.read_triangle_mesh(mesh_filename)
-#         mesh0 = mesh0.simplify_quadric_decimation(3000)
-#         o3d.io.write_triangle_mesh(mesh_filename.replace(".obj", "_simplified.obj"), mesh0)
-#         mesh_trimesh = trimesh.load(mesh_filename.replace(".obj", "_simplified.obj"))
-#         subsamples_ids = np.random.choice(len(mesh_v), np.min((len(mesh_v), 1500)), replace=False)
-#         subsamples = mesh_v[subsamples_ids, :]
-#         surface_geodesic = surface_geodesic[subsamples_ids, :][:, subsamples_ids]
-#     else:
-#         mesh_trimesh = trimesh.load(mesh_filename)
-#         subsamples = mesh_v
-#     origins, ends, pts_bone_dist = pts2line(subsamples, bones)
-#     pts_bone_visibility = calc_pts2bone_visible_mat(mesh_trimesh, origins, ends)
-#     pts_bone_visibility = pts_bone_visibility.reshape(len(bones), len(subsamples)).transpose()
-#     pts_bone_dist = pts_bone_dist.reshape(len(bones), len(subsamples)).transpose()
-#     # remove visible points which are too far
-#     for b in range(pts_bone_visibility.shape[1]):
-#         visible_pts = np.argwhere(pts_bone_visibility[:, b] == 1).squeeze(1)
-#         if len(visible_pts) == 0:
-#             continue
-#         threshold_b = np.percentile(pts_bone_dist[visible_pts, b], 15)
-#         pts_bone_visibility[pts_bone_dist[:, b] > 1.3 * threshold_b, b] = False
-#
-#     visible_matrix = np.zeros(pts_bone_visibility.shape)
-#     visible_matrix[np.where(pts_bone_visibility == 1)] = pts_bone_dist[np.where(pts_bone_visibility == 1)]
-#     for c in range(visible_matrix.shape[1]):
-#         unvisible_pts = np.argwhere(pts_bone_visibility[:, c] == 0).squeeze(1)
-#         visible_pts = np.argwhere(pts_bone_visibility[:, c] == 1).squeeze(1)
-#         if len(visible_pts) == 0:
-#             visible_matrix[:, c] = pts_bone_dist[:, c]
-#             continue
-#         for r in unvisible_pts:
-#             dist1 = np.min(surface_geodesic[r, visible_pts])
-#             nn_visible = visible_pts[np.argmin(surface_geodesic[r, visible_pts])]
-#             if np.isinf(dist1):
-#                 visible_matrix[r, c] = 8.0 + pts_bone_dist[r, c]
-#             else:
-#                 visible_matrix[r, c] = dist1 + visible_matrix[nn_visible, c]
-#     if subsampling:
-#         nn_dist = np.sum((mesh_v[:, np.newaxis, :] - subsamples[np.newaxis, ...]) ** 2, axis=2)
-#         nn_ind = np.argmin(nn_dist, axis=1)
-#         visible_matrix = visible_matrix[nn_ind, :]
-#         os.remove(mesh_filename.replace(".obj", "_simplified.obj"))
-#     return visible_matrix
-
-
 def pts2line(pts, lines):
     '''
     Calculate points-to-bone distance. Point to line segment distance refer to
@@ -407,6 +431,7 @@ def calc_pts2bone_visible_mat(bvhtree, origins, ends):
 
     distances = []
     for ray_dir, origin in zip(ray_dirs, origins):
+        # TODO: make sure ray_cast stops at nearest face
         location, normal, index, distance = bvhtree.ray_cast(origin, ray_dir + 1e-15)
         distances.append(distance if distance else 0)
 
@@ -415,13 +440,12 @@ def calc_pts2bone_visible_mat(bvhtree, origins, ends):
     return vis_mat
 
 
-def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=False, decimation=3000, sampling=1500):
+def calc_geodesic_matrix(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=False, decimation=3000, sampling=1500):
     """
     calculate volumetric geodesic distance from vertices to each bones
     :param bones: B*6 numpy array where each row stores the starting and ending joint position of a bone
     :param mesh_v: V*3 mesh vertices
     :param surface_geodesic: geodesic distance matrix of all vertices
-    :param mesh_filename: mesh filename
     :return: an approaximate volumetric geodesic distance matrix V*B, were (v,b) is the distance from vertex v to bone b
     """
 
@@ -467,6 +491,127 @@ def calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, bvh_tree, use_sampli
     return visible_matrix
 
 
+def add_duplicate_joints(skel):
+    this_level = [skel.root]
+    while this_level:
+        next_level = []
+        for p_node in this_level:
+            if len(p_node.children) > 1:
+                new_children = []
+                for dup_id in range(len(p_node.children)):
+                    p_node_new = TreeNode(p_node.name + '_dup_{:d}'.format(dup_id), p_node.pos)
+                    p_node_new.overlap=True
+                    p_node_new.parent = p_node
+                    p_node_new.children = [p_node.children[dup_id]]
+                    # for user interaction, we move overlapping joints a bit to its children
+                    p_node_new.pos = np.array(p_node_new.pos) + 0.03 * np.linalg.norm(np.array(p_node.children[dup_id].pos) - np.array(p_node_new.pos))
+                    p_node_new.pos = (p_node_new.pos[0], p_node_new.pos[1], p_node_new.pos[2])
+                    p_node.children[dup_id].parent = p_node_new
+                    new_children.append(p_node_new)
+                p_node.children = new_children
+            p_node.overlap = False
+            next_level += p_node.children
+        this_level = next_level
+    return skel
+
+
+def mapping_bone_index(bones_old, bones_new):
+    bone_map = {}
+    for i in range(len(bones_old)):
+        bone_old = bones_old[i][np.newaxis, :]
+        dist = np.linalg.norm(bones_new - bone_old, axis=1)
+        ni = np.argmin(dist)
+        bone_map[i] = ni
+    return bone_map
+
+
+def get_bones(skel):
+    """
+    extract bones from skeleton struction
+    :param skel: input skeleton
+    :return: bones are B*6 array where each row consists starting and ending points of a bone
+             bone_name are a list of B elements, where each element consists starting and ending joint name
+             leaf_bones indicate if this bone is a virtual "leaf" bone.
+             We add virtual "leaf" bones to the leaf joints since they always have skinning weights as well
+    """
+    bones = []
+    bone_name = []
+    leaf_bones = []
+    this_level = [skel.root]
+    while this_level:
+        next_level = []
+        for p_node in this_level:
+            p_pos = np.array(p_node.pos)
+            next_level += p_node.children
+            for c_node in p_node.children:
+                c_pos = np.array(c_node.pos)
+                bones.append(np.concatenate((p_pos, c_pos))[np.newaxis, :])
+                bone_name.append([p_node.name, c_node.name])
+                leaf_bones.append(False)
+                if len(c_node.children) == 0:
+                    bones.append(np.concatenate((c_pos, c_pos))[np.newaxis, :])
+                    bone_name.append([c_node.name, c_node.name+'_leaf'])
+                    leaf_bones.append(True)
+        this_level = next_level
+    bones = np.concatenate(bones, axis=0)
+    return bones, bone_name, leaf_bones
+
+
+
+def assemble_skel_skin(skel, attachment):
+    bones_old, bone_names_old, _ = get_bones(skel)
+    skel_new = add_duplicate_joints(skel)
+    bones_new, bone_names_new, _ = get_bones(skel_new)
+    bone_map = mapping_bone_index(bones_old, bones_new)
+    skel_new.joint_pos = skel_new.get_joint_dict()
+    skel_new.joint_skin = []
+
+    for v in range(len(attachment)):
+        vi_skin = [str(v)]
+        skw = attachment[v]
+        skw = skw / (np.sum(skw) + 1e-10)
+        for i in range(len(skw)):
+            if i == len(bones_old):
+                break
+            if skw[i] > 1e-5:
+                bind_joint_name = bone_names_new[bone_map[i]][0]
+                bind_weight = skw[i]
+                vi_skin.append(bind_joint_name)
+                vi_skin.append(str(bind_weight))
+        skel_new.joint_skin.append(vi_skin)
+    return skel_new
+
+
+def post_filter(skin_weights, topology_edge, num_ring=1):
+    skin_weights_new = np.zeros_like(skin_weights)
+    for v in range(len(skin_weights)):
+        adj_verts_multi_ring = []
+        current_seeds = [v]
+        for r in range(num_ring):
+            adj_verts = []
+            for seed in current_seeds:
+                adj_edges = topology_edge[:, np.argwhere(topology_edge == seed)[:, 1]]
+                adj_verts_seed = list(set(adj_edges.flatten().tolist()))
+                adj_verts_seed.remove(seed)
+                adj_verts += adj_verts_seed
+            adj_verts_multi_ring += adj_verts
+            current_seeds = adj_verts
+        adj_verts_multi_ring = list(set(adj_verts_multi_ring))
+        if v in adj_verts_multi_ring:
+            adj_verts_multi_ring.remove(v)
+        skin_weights_neighbor = [skin_weights[int(i), :][np.newaxis, :] for i in adj_verts_multi_ring]
+        skin_weights_neighbor = np.concatenate(skin_weights_neighbor, axis=0)
+        #max_bone_id = np.argmax(skin_weights[v, :])
+        #if np.sum(skin_weights_neighbor[:, max_bone_id]) < 0.17 * len(skin_weights_neighbor):
+        #    skin_weights_new[v, :] = np.mean(skin_weights_neighbor, axis=0)
+        #else:
+        #    skin_weights_new[v, :] = skin_weights[v, :]
+        skin_weights_new[v, :] = np.mean(skin_weights_neighbor, axis=0)
+
+    #skin_weights_new[skin_weights_new.sum(axis=1) == 0, :] = skin_weights[skin_weights_new.sum(axis=1) == 0, :]
+    return skin_weights_new
+
+
 def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh_tree, subsampling=False, decimation=3000, sampling=1500):
     """
     predict skinning
@@ -483,7 +628,7 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     mesh_v = input_data.pos.data.cpu().numpy()
     print("     calculating volumetric geodesic distance from vertices to bone. This step takes some time...")
 
-    geo_dist = calc_geodesic_matrix_2(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=subsampling, decimation=decimation, sampling=sampling)
+    geo_dist = calc_geodesic_matrix(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=subsampling, decimation=decimation, sampling=sampling)
     input_samples = []  # joint_pos (x, y, z), (bone_id, 1/D)*5
     loss_mask = []
     skin_nn = []
@@ -537,6 +682,37 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     return skel_res
 
 
+def binvox_voxels(mesh_v, mesh_f):
+    import sys
+    import tempfile
+    import subprocess
+    from .mesh_utils import binvox_rw
+    # voxel
+    fo_normalized = tempfile.NamedTemporaryFile(suffix='_normalized.obj')
+    fo_normalized.close()
+
+    obj_simple_export(fo_normalized.name, mesh_v, mesh_f)
+
+    # TODO: we might cache the .binvox file somewhere, as in the RigNet quickstart example
+    rignet_path = bpy.context.preferences.addons[__package__].preferences.rignet_path
+    binvox_exe = os.path.join(rignet_path, "binvox")
+
+    if sys.platform.startswith("win"):
+        binvox_exe += ".exe"
+
+    if not os.path.isfile(binvox_exe):
+        os.unlink(fo_normalized.name)
+        clear()
+        raise FileNotFoundError("binvox executable not found in {0}, please check RigNet path in the addon preferences")
+
+    subprocess.call([binvox_exe, "-d", "88", fo_normalized.name])
+    with open(os.path.splitext(fo_normalized.name)[0] + '.binvox', 'rb') as fvox:
+        vox = binvox_rw.read_as_3d_array(fvox)
+
+    os.unlink(fo_normalized.name)
+    return vox
+
+
 def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decimation=3000, sampling=1500):
     print("predicting rig")
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
@@ -576,23 +752,29 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     skinNet.eval()
     print("     skinning prediction network loaded.")
 
-    data, vox, surface_geodesic, translation_normalize, scale_normalize = create_single_data(mesh_obj)
+    mesh_data_norm = NormalizedMeshData(mesh_obj)
+    data, surface_geodesic = create_single_data(mesh_data_norm)
     data.to(device)
 
     print("predicting joints")
+    vox = mesh_data_norm.voxels()
+    # vox = binvox_voxels(mesh_data_norm.mesh_v.tolist(), mesh_data_norm.mesh_f.tolist())
+    #
+    # vox.data = binvox.data
+
+
     data = predict_joints(data, vox, jointNet, threshold, bandwidth=bandwidth)
 
     data.to(device)
     print("predicting connectivity")
     pred_skeleton = predict_skeleton(data, vox, rootNet, boneNet)
-    # pred_skeleton.normalize(scale_normalize, -translation_normalize)
 
     print("predicting skinning")
-    bvh_tree = BVHTree.FromObject(mesh_obj, bpy.context.evaluated_depsgraph_get())
+    bvh_tree = mesh_data_norm.bvh_tree
     pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, bvh_tree, subsampling=downsample_skinning, decimation=decimation, sampling=sampling)
 
     # here we reverse the normalization to the original scale and position
-    pred_rig.normalize(scale_normalize, -translation_normalize)
+    pred_rig.normalize(mesh_data_norm.scale_normalize, -mesh_data_norm.translation_normalize)
 
     mesh_obj.vertex_groups.clear()
 
