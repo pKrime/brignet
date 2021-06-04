@@ -7,10 +7,7 @@ from scipy.sparse import lil_matrix
 from scipy.sparse.csgraph import dijkstra
 import time
 
-from . import pointsearch
-
-from importlib import reload
-reload(pointsearch)
+from mathutils.kdtree import KDTree
 
 
 class QueueEntry:
@@ -107,27 +104,35 @@ class MeshSampler:
         r_min = r_max * beta * (1 - pow(ratio, gamma))
 
         deleted = [False] * pcl_size
-        kdtree = pointsearch.PointKDtree(all_points)  # TODO: use mathutils.kdtree
 
-        def weight_fcn(d2):
-            d = sqrt(d2)
+        kd = KDTree(len(all_points))
+        for i, v in enumerate(all_points):
+            kd.insert(v, i)
+
+        kd.balance()
+
+        def weight_fcn(d):
             if d < r_min:
                 d = r_min
 
             return pow(1 - d / r_max, alpha)
 
+        def weight_fcn_squared(d2):
+            d = sqrt(d2)
+            return weight_fcn(d)
+
         def compute_point_weight(pidx0):
-            nbs = kdtree.get_points(all_points[pidx0], r_max)
+            nbs = kd.find_range(all_points[pidx0], r_max)
             weight = 0
 
-            for neighbour, dist2 in nbs:
+            for neighbour, nb_idx, nb_dist in nbs:
                 # only count weights if not the same point if not deleted
-                if neighbour.idx == pidx0:
+                if nb_idx == pidx0:
                     continue
-                if deleted[neighbour.idx]:
+                if deleted[nb_idx]:
                     continue
 
-                weight += weight_fcn(dist2)
+                weight += weight_fcn(nb_dist)
 
             return weight
 
@@ -149,10 +154,10 @@ class MeshSampler:
             current_number_of_points -= 1
 
             # update weights
-            nbs = kdtree.get_points(all_points[pidx], r_max)
+            nbs = kd.find_range(all_points[pidx], r_max)
 
-            for nb, dist in nbs:
-                queue[nb.idx].weight = compute_point_weight(nb.idx)
+            for nb, nb_idx, nb_dist in nbs:
+                queue[nb_idx].weight = compute_point_weight(nb_idx)
 
         for i, point in enumerate(all_points):
             if deleted[i]:
