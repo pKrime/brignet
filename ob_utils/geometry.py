@@ -189,18 +189,27 @@ class NormalizedMeshData:
         kernel = np.ones((3, 3, 3), 'int')
         kernel[1, 1, 1] = 0
 
-        # ignoring boundary at present
-        it = np.nditer(voxels[1:-1, 1:-1, 1:-1], flags=['multi_index'])
+        # expand to allow convolution on boundaries
+        res_x, res_y, res_z = voxels.shape
+        blank = np.zeros((res_x, 1, res_z), 'bool')
+        expanded = np.hstack((blank, voxels, blank))
+        blank = np.zeros((1, res_y + 2, res_z), 'bool')
+        expanded = np.vstack((blank, expanded, blank))
+        blank = np.zeros((res_x + 2, res_y + 2, 1), 'bool')
+        expanded = np.dstack((blank, expanded, blank))
+
+        it = np.nditer(voxels, flags=['multi_index'])
         for vox in it:
             if not vox:
                 continue
             x, y, z = it.multi_index
-            vox_slice = voxels[x:x+3, y:y+3, z:z+3].astype('int')
-            if not convolve(vox_slice, kernel, 'valid'):
+
+            vox_slice = expanded[x:x+3, y:y+3, z:z+3].astype('int')
+            if not convolve(vox_slice, kernel, 'valid').all():
                 voxels[x, y, z] = False
             # TODO: if voxels[x, y, z] is True, we might jump the surroundings
 
-    def voxels(self, resolution=88, remove_solitary=True):
+    def voxels(self, resolution=88, remove_isolated=True):
         voxels = np.zeros([resolution, resolution, resolution], dtype=bool)
         res_x, res_y, res_z = voxels.shape  # redundant, but might get useful if we change uniform res in the future
 
@@ -222,7 +231,7 @@ class NormalizedMeshData:
                 y_co += vox_size
             z_co += vox_size
 
-        if remove_solitary:
+        if remove_isolated:
             self._remove_isolated_voxels(voxels)
 
         return Voxels(voxels, voxels.shape, bound_min, 1.0, 'xyz')
