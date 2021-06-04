@@ -147,25 +147,25 @@ class NormalizedMeshData:
     def bvh_tree(self):
         return self._bvh_tree
 
-    def is_inside_volume(self, vector):
-        # in some cases multiple tests have to done
-        # to reduce the probability for errors
-        direction1 = Vector((random(), random(), random())).normalized()
-        direction2 = Vector((random(), random(), random())).normalized()
-        direction3 = Vector((random(), random(), random())).normalized()
+    def is_inside_volume(self, vector, samples=2):
+        direction = Vector((random(), random(), random())).normalized()
+        hits = self._count_hits(vector, direction)
 
-        hits1 = self._count_hits(vector, direction1)
-        if hits1 == 0:
+        if hits == 0:
             return False
-        if hits1 == 1:
+        if hits == 1:
             return True
 
-        hits2 = self._count_hits(vector, direction2)
-        if hits1 % 2 == hits2 % 2:
-            return hits1 % 2 == 1
+        hits_modulo = hits % 2
+        for i in range(samples):
+            direction = Vector((random(), random(), random())).normalized()
+            check_modulo = self._count_hits(vector, direction) % 2
+            if hits_modulo == check_modulo:
+                return hits_modulo == 1
 
-        hits3 = self._count_hits(vector, direction3)
-        return hits3 % 2 == 1
+            hits_modulo = check_modulo
+
+        return hits_modulo == 1
 
     def _count_hits(self, start, direction):
         hits = 0
