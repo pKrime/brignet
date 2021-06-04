@@ -1,11 +1,7 @@
 import bpy
 from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
-from .import rigutils
-from .import meshutils
 
-from importlib import reload
-reload(rigutils)
-reload(meshutils)
+from .ob_utils import objects
 
 
 class BrignetRemesh(bpy.types.Operator):
@@ -23,7 +19,7 @@ class BrignetRemesh(bpy.types.Operator):
 
     def execute(self, context):
         wm = context.window_manager
-        new_ob = meshutils.mesh_from_collection(wm.brignet_highrescollection, name='brignet_remesh')
+        new_ob = objects.mesh_from_collection(wm.brignet_highrescollection, name='brignet_remesh')
 
         remesh = new_ob.modifiers.new(name='remesh', type='REMESH')
         remesh.voxel_size = 0.01
@@ -85,19 +81,12 @@ class BrigNetPredict(bpy.types.Operator):
 
     def execute(self, context):
         wm = context.window_manager
-        rigutils.remove_modifiers(wm.brignet_targetmesh, type_list=('ARMATURE',))
-
-        # try:
-        from . import rignetconnect
-        reload(rignetconnect)
-        # except ModuleNotFoundError as e:
-        #     self.report({'WARNING'}, "Some modules not found, please check bRigNet preferences")
-        #     print(e.args)
-        #     return {'CANCELLED'}
+        objects.remove_modifiers(wm.brignet_targetmesh, type_list=('ARMATURE',))
 
         bandwidth = (1 - wm.brignet_density) / 10
         threshold = wm.brignet_threshold/1000
 
+        from . import rignetconnect
         rignetconnect.predict_rig(wm.brignet_targetmesh, bandwidth, threshold,
                                   wm.brignet_downsample_skin,
                                   wm.brignet_downsample_decimate,
@@ -105,7 +94,7 @@ class BrigNetPredict(bpy.types.Operator):
 
         if wm.brignet_highrescollection:
             wm.brignet_highrescollection.hide_viewport = False
-            rigutils.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
+            objects.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
 
         return {'FINISHED'}
 

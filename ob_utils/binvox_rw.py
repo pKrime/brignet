@@ -15,49 +15,38 @@
 #  along with binvox-rw-py. If not, see <http://www.gnu.org/licenses/>.
 #
 
-
+import os
+import sys
+import tempfile
+import subprocess
 import numpy as np
 import struct
 
+from .geometry import Voxels
+from .geometry import obj_simple_export
 
-class Voxels(object):
-    """ Holds a binvox model.
-    data is either a three-dimensional numpy boolean array (dense representation)
-    or a two-dimensional numpy float array (coordinate representation).
 
-    dims, translate and scale are the model metadata.
+def binvox_voxels(binvox_exe, mesh_v, mesh_f):
+    # voxel
+    fo_normalized = tempfile.NamedTemporaryFile(suffix='_normalized.obj')
+    fo_normalized.close()
 
-    dims are the voxel dimensions, e.g. [32, 32, 32] for a 32x32x32 model.
+    obj_simple_export(fo_normalized.name, mesh_v, mesh_f)
 
-    scale and translate relate the voxels to the original model coordinates.
+    if sys.platform.startswith("win"):
+        binvox_exe += ".exe"
 
-    To translate voxel coordinates i, j, k to original coordinates x, y, z:
+    if not os.path.isfile(binvox_exe):
+        os.unlink(fo_normalized.name)
+        raise FileNotFoundError("binvox executable not found in {0}, please check RigNet path in the addon preferences")
 
-    x_n = (i+.5)/dims[0]
-    y_n = (j+.5)/dims[1]
-    z_n = (k+.5)/dims[2]
-    x = scale*x_n + translate[0]
-    y = scale*y_n + translate[1]
-    z = scale*z_n + translate[2]
+    subprocess.call([binvox_exe, "-d", "88", fo_normalized.name])
+    with open(os.path.splitext(fo_normalized.name)[0] + '.binvox', 'rb') as fvox:
+        vox = read_as_3d_array(fvox)
 
-    """
+    os.unlink(fo_normalized.name)
+    return vox
 
-    def __init__(self, data, dims, translate, scale, axis_order):
-        self.data = data
-        self.dims = dims
-        self.translate = translate
-        self.scale = scale
-        assert (axis_order in ('xzy', 'xyz'))
-        self.axis_order = axis_order
-
-    def clone(self):
-        data = self.data.copy()
-        dims = self.dims[:]
-        translate = self.translate[:]
-        return Voxels(data, dims, translate, self.scale, self.axis_order)
-
-    def write(self, fp):
-        write(self, fp)
 
 def read_header(fp):
     """ Read binvox header. Mostly meant for internal use.
@@ -71,6 +60,7 @@ def read_header(fp):
     line = fp.readline()
 
     return dims, translate, scale
+
 
 def read_as_3d_array(fp, fix_coords=True):
     """ Read binary binvox format as array.
@@ -240,6 +230,7 @@ def write(voxel_model, fp):
     # flush out remainders
     if ctr > 0:
         write_pair(fp, state, ctr)
+
 
 if __name__ == '__main__':
     import doctest

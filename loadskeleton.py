@@ -1,7 +1,7 @@
 import os
 import bpy
 
-from .rigutils import ArmatureGenerator
+from .ob_utils.objects import ArmatureGenerator
 
 
 class LoadSkeletonPanel(bpy.types.Panel):

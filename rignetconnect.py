@@ -9,14 +9,9 @@ from torch_geometric.utils import add_self_loops
 
 from utils.rig_parser import Skel, Info
 from utils.tree_utils import TreeNode
-# from utils.io_utils import assemble_skel_skin
 from utils.cluster_utils import meanshift_cluster, nms_meanshift
 from utils.mst_utils import increase_cost_for_outside_bone, primMST_symmetry, loadSkel_recur, inside_check, flip
 from utils.mst_utils import sample_on_bone
-
-# from geometric_proc.common_ops import get_bones
-
-# from run_skinning import post_filter
 
 from models.GCN import JOINTNET_MASKNET_MEANSHIFT as JOINTNET
 from models.ROOT_GCN import ROOTNET
@@ -24,17 +19,17 @@ from models.PairCls_GCN import PairCls as BONENET
 from models.SKINNING import SKINNET
 
 import bpy
-import bmesh
 from mathutils import Matrix
-from mathutils import Vector
-from mathutils.bvhtree import BVHTree
-from random import random
 
-from .rigutils import ArmatureGenerator
-from .mesh_utils import sampling as mesh_sampling
+from .ob_utils import sampling as mesh_sampling
+from .ob_utils.geometry import get_tpl_edges
+from .ob_utils.geometry import get_geo_edges
+from .ob_utils.geometry import NormalizedMeshData
+
+from .ob_utils.objects import ArmatureGenerator
 
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def getInitId(data, model):
@@ -49,206 +44,6 @@ def getInitId(data, model):
         root_prob = torch.sigmoid(root_prob).data.cpu().numpy()
     root_id = np.argmax(root_prob)
     return root_id
-
-
-def normalize_obj(mesh_v):
-    dims = [max(mesh_v[:, 0]) - min(mesh_v[:, 0]),
-            max(mesh_v[:, 1]) - min(mesh_v[:, 1]),
-            max(mesh_v[:, 2]) - min(mesh_v[:, 2])]
-    scale = 1.0 / max(dims)
-    pivot = np.array([(min(mesh_v[:, 0]) + max(mesh_v[:, 0])) / 2, min(mesh_v[:, 1]),
-                      (min(mesh_v[:, 2]) + max(mesh_v[:, 2])) / 2])
-    mesh_v[:, 0] -= pivot[0]
-    mesh_v[:, 1] -= pivot[1]
-    mesh_v[:, 2] -= pivot[2]
-    mesh_v *= scale
-    return mesh_v, pivot, scale
-
-
-def obj_simple_export(filepath, vertices, polygons):
-    with open(filepath, 'w') as f:
-        f.write("# OBJ file\n")
-        for v in vertices:
-            f.write("v {0:.4f} {1:.4f} {2:.4f}\n".format(*v))
-
-        for p in polygons:
-            f.write("f " + " ".join(str(i + 1) for i in p) + "\n")
-
-
-def get_geo_edges(surface_geodesic, remesh_obj_v):
-    edge_index = []
-    surface_geodesic += 1.0 * np.eye(len(surface_geodesic))  # remove self-loop edge here
-    for i in range(len(remesh_obj_v)):
-        geodesic_ball_samples = np.argwhere(surface_geodesic[i, :] <= 0.06).squeeze(1)
-        if len(geodesic_ball_samples) > 10:
-            geodesic_ball_samples = np.random.choice(geodesic_ball_samples, 10, replace=False)
-        edge_index.append(np.concatenate((np.repeat(i, len(geodesic_ball_samples))[:, np.newaxis],
-                                          geodesic_ball_samples[:, np.newaxis]), axis=1))
-    edge_index = np.concatenate(edge_index, axis=0)
-    return edge_index
-
-
-def get_tpl_edges(remesh_obj_v, remesh_obj_f):
-    edge_index = []
-    for v in range(len(remesh_obj_v)):
-        face_ids = np.argwhere(remesh_obj_f == v)[:, 0]
-        neighbor_ids = []
-        for face_id in face_ids:
-            for v_id in range(3):
-                if remesh_obj_f[face_id, v_id] != v:
-                    neighbor_ids.append(remesh_obj_f[face_id, v_id])
-        neighbor_ids = list(set(neighbor_ids))
-        neighbor_ids = [np.array([v, n])[np.newaxis, :] for n in neighbor_ids]
-        neighbor_ids = np.concatenate(neighbor_ids, axis=0)
-        edge_index.append(neighbor_ids)
-    edge_index = np.concatenate(edge_index, axis=0)
-    return edge_index
-
-
-class Voxels:
-    """ Holds a binvox model.
-    data is either a three-dimensional numpy boolean array (dense representation)
-    or a two-dimensional numpy float array (coordinate representation).
-
-    dims, translate and scale are the model metadata.
-
-    dims are the voxel dimensions, e.g. [32, 32, 32] for a 32x32x32 model.
-
-    scale and translate relate the voxels to the original model coordinates.
-
-    To translate voxel coordinates i, j, k to original coordinates x, y, z:
-
-    x_n = (i+.5)/dims[0]
-    y_n = (j+.5)/dims[1]
-    z_n = (k+.5)/dims[2]
-    x = scale*x_n + translate[0]
-    y = scale*y_n + translate[1]
-    z = scale*z_n + translate[2]
-
-    """
-
-    def __init__(self, data, dims, translate, scale, axis_order):
-        self.data = data
-        self.dims = dims
-        self.translate = translate
-        self.scale = scale
-        assert (axis_order in ('xzy', 'xyz'))
-        self.axis_order = axis_order
-
-    def clone(self):
-        data = self.data.copy()
-        dims = self.dims[:]
-        translate = self.translate[:]
-        return Voxels(data, dims, translate, self.scale, self.axis_order)
-
-
-class NormalizedMeshData:
-    def __init__(self, mesh_obj):
-        # triangulate first
-        bm = bmesh.new()
-        bm.from_object(mesh_obj, bpy.context.evaluated_depsgraph_get())
-
-        # apply modifiers
-        mesh_obj.data.clear_geometry()
-        for mod in reversed(mesh_obj.modifiers):
-            mesh_obj.modifiers.remove(mod)
-
-        bm.to_mesh(mesh_obj.data)
-        bpy.context.evaluated_depsgraph_get()
-        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
-
-        # rotate -90 deg on X axis
-        mat = Matrix(((1.0, 0.0, 0.0, 0.0),
-                      (0.0, 0.0, 1.0, 0.0),
-                      (0.0, -1.0, 0, 0.0),
-                      (0.0, 0.0, 0.0, 1.0)))
-
-        bmesh.ops.transform(bm, matrix=mat, verts=bm.verts[:])
-        bm.verts.ensure_lookup_table()
-        bm.faces.ensure_lookup_table()
-
-        mesh_v = np.asarray([list(v.co) for v in bm.verts])
-        self.mesh_f = np.asarray([[v.index for v in f.verts] for f in bm.faces])
-
-        self.mesh_vn = np.asarray([list(v.normal) for v in bm.verts])
-        self.tri_areas = [t.calc_area() for t in bm.faces]
-
-        bm.free()
-
-        self.mesh_v, self.translation_normalize, self.scale_normalize = normalize_obj(mesh_v)
-        self._bvh_tree = BVHTree.FromPolygons(self.mesh_v.tolist(), self.mesh_f.tolist(), all_triangles=True)
-
-    @property
-    def bound_min(self):
-        return -0.5, 0.0, min(self.mesh_v[:, 2])
-
-    @property
-    def bound_max(self):
-        return 0.5, 1.0, max(self.mesh_v[:, 2])
-
-    @property
-    def bvh_tree(self):
-        return self._bvh_tree
-
-    def is_inside_volume(self, vector):
-        # in some cases multiple tests have to done
-        # to reduce the probability for errors
-        direction1 = Vector((random(), random(), random())).normalized()
-        direction2 = Vector((random(), random(), random())).normalized()
-        direction3 = Vector((random(), random(), random())).normalized()
-
-        hits1 = self._count_hits(vector, direction1)
-        if hits1 == 0:
-            return False
-        if hits1 == 1:
-            return True
-
-        hits2 = self._count_hits(vector, direction2)
-        if hits1 % 2 == hits2 % 2:
-            return hits1 % 2 == 1
-
-        hits3 = self._count_hits(vector, direction3)
-        return hits3 % 2 == 1
-
-    def _count_hits(self, start, direction):
-        hits = 0
-        offset = direction * 0.0001
-        bvh_tree = self.bvh_tree
-
-        location = bvh_tree.ray_cast(start, direction)[0]
-
-        while location is not None:
-            hits += 1
-            location = bvh_tree.ray_cast(location + offset, direction)[0]
-
-        return hits
-
-    def _on_surface(self, point, radius):
-        return self.bvh_tree.find_nearest(point, radius)
-
-    def voxels(self, resolution=88):
-        voxels = np.zeros([resolution, resolution, resolution], dtype=bool)
-        res_x, res_y, res_z = voxels.shape  # redundant, but might get useful if we change uniform res in the future
-
-        vox_size = 1.0 / resolution
-        vox_radius = vox_size / 2.0
-
-        bound_min = self.bound_min
-        min_x, min_y, min_z = bound_min
-
-        z_co = min_z + vox_radius
-        for z in range(res_z):
-            y_co = min_y + vox_radius
-            for y in range(res_y):
-                x_co = min_x + vox_radius
-                for x in range(res_x):
-                    voxels[x, y, z] = self.is_inside_volume(Vector((x_co, y_co, z_co)))
-
-                    x_co += vox_size
-                y_co += vox_size
-            z_co += vox_size
-
-        return Voxels(voxels, voxels.shape, bound_min, 1.0, 'xyz')
 
 
 def create_single_data(mesh_data):
@@ -622,7 +417,7 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     :param mesh_filename: mesh filename
     :return: predicted rig with skinning weights information
     """
-    global device, output_folder
+    global DEVICE, output_folder
     num_nearest_bone = 5
     bones, bone_names, bone_isleaf = get_bones(pred_skel)
     mesh_v = input_data.pos.data.cpu().numpy()
@@ -661,7 +456,7 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     skin_nn = np.concatenate(skin_nn, axis=0)
     skin_input = torch.from_numpy(skin_input).float()
     input_data.skin_input = skin_input
-    input_data.to(device)
+    input_data.to(DEVICE)
 
     skin_pred = skin_pred_net(input_data)
     skin_pred = torch.softmax(skin_pred, dim=1)
@@ -682,37 +477,6 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     return skel_res
 
 
-def binvox_voxels(mesh_v, mesh_f):
-    import sys
-    import tempfile
-    import subprocess
-    from .mesh_utils import binvox_rw
-    # voxel
-    fo_normalized = tempfile.NamedTemporaryFile(suffix='_normalized.obj')
-    fo_normalized.close()
-
-    obj_simple_export(fo_normalized.name, mesh_v, mesh_f)
-
-    # TODO: we might cache the .binvox file somewhere, as in the RigNet quickstart example
-    rignet_path = bpy.context.preferences.addons[__package__].preferences.rignet_path
-    binvox_exe = os.path.join(rignet_path, "binvox")
-
-    if sys.platform.startswith("win"):
-        binvox_exe += ".exe"
-
-    if not os.path.isfile(binvox_exe):
-        os.unlink(fo_normalized.name)
-        clear()
-        raise FileNotFoundError("binvox executable not found in {0}, please check RigNet path in the addon preferences")
-
-    subprocess.call([binvox_exe, "-d", "88", fo_normalized.name])
-    with open(os.path.splitext(fo_normalized.name)[0] + '.binvox', 'rb') as fvox:
-        vox = binvox_rw.read_as_3d_array(fvox)
-
-    os.unlink(fo_normalized.name)
-    return vox
-
-
 def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decimation=3000, sampling=1500):
     print("predicting rig")
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
@@ -725,21 +489,21 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     model_dir = bpy.context.preferences.addons[__package__].preferences.model_path
 
     jointNet = JOINTNET()
-    jointNet.to(device)
+    jointNet.to(DEVICE)
     jointNet.eval()
     jointNet_checkpoint = torch.load(os.path.join(model_dir, 'gcn_meanshift/model_best.pth.tar'))
     jointNet.load_state_dict(jointNet_checkpoint['state_dict'])
     print("     joint prediction network loaded.")
 
     rootNet = ROOTNET()
-    rootNet.to(device)
+    rootNet.to(DEVICE)
     rootNet.eval()
     rootNet_checkpoint = torch.load(os.path.join(model_dir, 'rootnet/model_best.pth.tar'))
     rootNet.load_state_dict(rootNet_checkpoint['state_dict'])
     print("     root prediction network loaded.")
 
     boneNet = BONENET()
-    boneNet.to(device)
+    boneNet.to(DEVICE)
     boneNet.eval()
     boneNet_checkpoint = torch.load(os.path.join(model_dir, 'bonenet/model_best.pth.tar'))
     boneNet.load_state_dict(boneNet_checkpoint['state_dict'])
@@ -748,24 +512,19 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     skinNet = SKINNET(nearest_bone=5, use_Dg=True, use_Lf=True)
     skinNet_checkpoint = torch.load(os.path.join(model_dir, 'skinnet/model_best.pth.tar'))
     skinNet.load_state_dict(skinNet_checkpoint['state_dict'])
-    skinNet.to(device)
+    skinNet.to(DEVICE)
     skinNet.eval()
     print("     skinning prediction network loaded.")
 
     mesh_data_norm = NormalizedMeshData(mesh_obj)
     data, surface_geodesic = create_single_data(mesh_data_norm)
-    data.to(device)
+    data.to(DEVICE)
 
     print("predicting joints")
     vox = mesh_data_norm.voxels()
-    # vox = binvox_voxels(mesh_data_norm.mesh_v.tolist(), mesh_data_norm.mesh_f.tolist())
-    #
-    # vox.data = binvox.data
-
-
     data = predict_joints(data, vox, jointNet, threshold, bandwidth=bandwidth)
 
-    data.to(device)
+    data.to(DEVICE)
     print("predicting connectivity")
     pred_skeleton = predict_skeleton(data, vox, rootNet, boneNet)
 
