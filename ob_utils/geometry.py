@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import convolve
 from random import random
 
 import bpy
@@ -183,7 +184,23 @@ class NormalizedMeshData:
     def _on_surface(self, point, radius):
         return self.bvh_tree.find_nearest(point, radius)
 
-    def voxels(self, resolution=88):
+    def _remove_isolated_voxels(self, voxels):
+        # convolution against kernel of 'Trues' with a 'False' center
+        kernel = np.ones((3, 3, 3), 'int')
+        kernel[1, 1, 1] = 0
+
+        # ignoring boundary at present
+        it = np.nditer(voxels[1:-1, 1:-1, 1:-1], flags=['multi_index'])
+        for vox in it:
+            if not vox:
+                continue
+            x, y, z = it.multi_index
+            vox_slice = voxels[x:x+3, y:y+3, z:z+3].astype('int')
+            if not convolve(vox_slice, kernel, 'valid'):
+                voxels[x, y, z] = False
+            # TODO: if voxels[x, y, z] is True, we might jump the surroundings
+
+    def voxels(self, resolution=88, remove_solitary=True):
         voxels = np.zeros([resolution, resolution, resolution], dtype=bool)
         res_x, res_y, res_z = voxels.shape  # redundant, but might get useful if we change uniform res in the future
 
@@ -204,5 +221,8 @@ class NormalizedMeshData:
                     x_co += vox_size
                 y_co += vox_size
             z_co += vox_size
+
+        if remove_solitary:
+            self._remove_isolated_voxels(voxels)
 
         return Voxels(voxels, voxels.shape, bound_min, 1.0, 'xyz')
