@@ -47,41 +47,14 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         print(f'adding {env_path}')
         return True
 
-    @staticmethod
-    def append_rignet():
-        rignet_path = bpy.context.preferences.addons[__package__].preferences.rignet_path
-
-        if not os.path.isdir(rignet_path):
-            return False
-
-        if not os.path.isdir(os.path.join(rignet_path, "utils")):
-            # not the rignet path, but the user might still be typing
-            return False
-
-        if not rignet_path in sys.path:
-            sys.path.append(rignet_path)
-
-        return True
-
     def update_modules(self, context):
         self.append_modules()
-
-    def update_rignet(self, context):
-        self.append_rignet()
 
     modules_path: bpy.props.StringProperty(
         name='RigNet environment path',
         description='Path to Conda RignetEnvironment',
         subtype='DIR_PATH',
         update=update_modules
-    )
-
-    rignet_path: bpy.props.StringProperty(
-        name='RigNet path',
-        description='Path to RigNet code',
-        subtype='DIR_PATH',
-        default=os.path.join(os.path.dirname(__file__), 'RigNet'),
-        update=update_rignet
     )
 
     model_path: bpy.props.StringProperty(
@@ -100,8 +73,6 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         col = box.column()
         row = col.row()
         row.prop(self, 'modules_path', text='Modules Path')
-        row = col.row()
-        row.prop(self, 'rignet_path', text='RigNet Path')
         row = col.row()
         row.prop(self, 'model_path', text='Model Path')
 

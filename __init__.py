@@ -65,8 +65,6 @@ def register():
     bpy.utils.register_class(LoadRignetSkeleton)
     bpy.utils.register_class(LoadSkeletonPanel)
 
-    if not BrignetPrefs.append_rignet():
-        print("RigNet not found, please set in bRigNet preferences")
     if not BrignetPrefs.append_modules():
         print("Modules path not found, please set in bRigNet preferences")
 

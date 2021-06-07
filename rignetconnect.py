@@ -7,16 +7,16 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.utils import add_self_loops
 
-from utils.rig_parser import Skel, Info
-from utils.tree_utils import TreeNode
-from utils.cluster_utils import meanshift_cluster, nms_meanshift
-from utils.mst_utils import increase_cost_for_outside_bone, primMST_symmetry, loadSkel_recur, inside_check, flip
-from utils.mst_utils import sample_on_bone
+from .RigNet.utils.rig_parser import Info
+from .RigNet.utils.tree_utils import TreeNode
+from .RigNet.utils.cluster_utils import meanshift_cluster, nms_meanshift
+from .RigNet.utils.mst_utils import increase_cost_for_outside_bone, primMST_symmetry, loadSkel_recur, inside_check, flip
+from .RigNet.utils.mst_utils import sample_on_bone
 
-from models.GCN import JOINTNET_MASKNET_MEANSHIFT as JOINTNET
-from models.ROOT_GCN import ROOTNET
-from models.PairCls_GCN import PairCls as BONENET
-from models.SKINNING import SKINNET
+from .RigNet.models.GCN import JOINTNET_MASKNET_MEANSHIFT as JOINTNET
+from .RigNet.models.ROOT_GCN import ROOTNET
+from .RigNet.models.PairCls_GCN import PairCls as BONENET
+from .RigNet.models.SKINNING import SKINNET
 
 import bpy
 from mathutils import Matrix
@@ -30,6 +30,45 @@ from .ob_utils.objects import ArmatureGenerator
 
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+
+class BrignetCache:
+    """Singleton class to store cache"""
+    _instance = None  # stores singleton instance
+
+    _mesh_sampler_cache = None
+    _mesh_data = None
+    _cached_object = None
+
+    @classmethod
+    def exists(cls):
+        return bool(cls._instance)
+
+    def __new__(cls):
+        """Singleton implementation: initialize only once, return existing instance at any subsequent attempt"""
+        if cls._instance is None:
+            instance = super().__new__(cls)
+            cls._instance = instance
+
+        return cls._instance
+
+    def mesh_data(self, mesh_obj=None):
+        if not self._mesh_data:
+            self._mesh_data = NormalizedMeshData(mesh_obj)
+        elif mesh_obj and mesh_obj != self._cached_object:
+            self._mesh_data = NormalizedMeshData(mesh_obj)
+            self._cached_object = mesh_obj
+            self._mesh_sampler_cache = None
+
+        # TODO: check geometry
+        return self._mesh_data
+
+    @property
+    def mesh_sampler(self):
+        if not self._mesh_sampler_cache:
+            self._mesh_sampler_cache = mesh_sampling.MeshSampler(self._mesh_data.mesh_f, self._mesh_data.mesh_v,
+                                                                 self._mesh_data.mesh_vn, self._mesh_data.tri_areas)
+        return self._mesh_sampler_cache
 
 
 def getInitId(data, model):
@@ -46,12 +85,14 @@ def getInitId(data, model):
     return root_id
 
 
-def create_single_data(mesh_data):
+def create_single_data():
     """
     create input data for the network. The data is wrapped by Data structure in pytorch-geometric library
     :param mesh_obj: input mesh
     :return: wrapped data, voxelized mesh, and geodesic distance matrix of all vertices
     """
+
+    mesh_data = BrignetCache().mesh_data()
 
     # vertices
     v = np.concatenate((mesh_data.mesh_v, mesh_data.mesh_vn), axis=1)
@@ -63,8 +104,8 @@ def create_single_data(mesh_data):
     tpl_e, _ = add_self_loops(tpl_e, num_nodes=v.size(0))
     # surface geodesic distance matrix
     print("     calculating surface geodesic matrix.")
-    mesh_sampler = mesh_sampling.MeshSampler(mesh_data.mesh_f, mesh_data.mesh_v, mesh_data.mesh_vn, mesh_data.tri_areas)
-    surface_geodesic = mesh_sampler.calc_geodesic()
+
+    surface_geodesic = BrignetCache().mesh_sampler.calc_geodesic()
     # geodesic edges
     print("     gathering geodesic edges.")
     geo_e = get_geo_edges(surface_geodesic, mesh_data.mesh_v).T
@@ -102,24 +143,19 @@ def predict_joints(input_data, vox, joint_pred_net, threshold, bandwidth=None, m
     y_pred_np = np.concatenate((y_pred_np, y_pred_np_reflect), axis=0)
     attn_pred_np = np.tile(attn_pred_np, (2, 1))
 
-    # img = draw_shifted_pts(mesh_filename, y_pred_np, weights=attn_pred_np)
     if not bandwidth:
         bandwidth = bandwidth_pred.item()
     y_pred_np = meanshift_cluster(y_pred_np, bandwidth, attn_pred_np, max_iter=40)
-    # img = draw_shifted_pts(mesh_filename, y_pred_np, weights=attn_pred_np)
 
     Y_dist = np.sum(((y_pred_np[np.newaxis, ...] - y_pred_np[:, np.newaxis, :]) ** 2), axis=2)
     density = np.maximum(bandwidth ** 2 - Y_dist, np.zeros(Y_dist.shape))
     density = np.sum(density, axis=0)
     density_sum = np.sum(density)
     y_pred_np = y_pred_np[density / density_sum > threshold]
-    attn_pred_np = attn_pred_np[density / density_sum > threshold][:, 0]
     density = density[density / density_sum > threshold]
 
-    # img = draw_shifted_pts(mesh_filename, y_pred_np, weights=attn_pred_np)
     pred_joints = nms_meanshift(y_pred_np, density, bandwidth)
     pred_joints, _ = flip(pred_joints)
-    # img = draw_shifted_pts(mesh_filename, pred_joints)
 
     # prepare and add new data members
     pairs = list(it.combinations(range(pred_joints.shape[0]), 2))
@@ -147,14 +183,13 @@ def predict_joints(input_data, vox, joint_pred_net, threshold, bandwidth=None, m
     return input_data
 
 
-def predict_skeleton(input_data, vox, root_pred_net, bone_pred_net, mesh_filename=None):
+def predict_skeleton(input_data, vox, root_pred_net, bone_pred_net):
     """
     Predict skeleton structure based on joints
     :param input_data: wrapped data
     :param vox: voxelized mesh
     :param root_pred_net: network to predict root
     :param bone_pred_net: network to predict pairwise connectivity cost
-    :param mesh_filename: meshfilename for debugging
     :return: predicted skeleton structure
     """
     root_id = getInitId(input_data, root_pred_net)
@@ -226,7 +261,6 @@ def calc_pts2bone_visible_mat(bvhtree, origins, ends):
 
     distances = []
     for ray_dir, origin in zip(ray_dirs, origins):
-        # TODO: make sure ray_cast stops at nearest face
         location, normal, index, distance = bvhtree.ray_cast(origin, ray_dir + 1e-15)
         distances.append(distance if distance else 0)
 
@@ -235,7 +269,7 @@ def calc_pts2bone_visible_mat(bvhtree, origins, ends):
     return vis_mat
 
 
-def calc_geodesic_matrix(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=False, decimation=3000, sampling=1500):
+def calc_geodesic_matrix(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=False):
     """
     calculate volumetric geodesic distance from vertices to each bones
     :param bones: B*6 numpy array where each row stores the starting and ending joint position of a bone
@@ -407,7 +441,7 @@ def post_filter(skin_weights, topology_edge, num_ring=1):
     return skin_weights_new
 
 
-def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh_tree, subsampling=False, decimation=3000, sampling=1500):
+def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh_tree):
     """
     predict skinning
     :param input_data: wrapped input data
@@ -423,7 +457,7 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     mesh_v = input_data.pos.data.cpu().numpy()
     print("     calculating volumetric geodesic distance from vertices to bone. This step takes some time...")
 
-    geo_dist = calc_geodesic_matrix(bones, mesh_v, surface_geodesic, bvh_tree, use_sampling=subsampling, decimation=decimation, sampling=sampling)
+    geo_dist = calc_geodesic_matrix(bones, mesh_v, surface_geodesic, bvh_tree)
     input_samples = []  # joint_pos (x, y, z), (bone_id, 1/D)*5
     loss_mask = []
     skin_nn = []
@@ -477,7 +511,7 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     return skel_res
 
 
-def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decimation=3000, sampling=1500):
+def predict_rig(mesh_obj, bandwidth, threshold):
     print("predicting rig")
     # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
     # and to save cpu memory in skinning calculation.
@@ -516,8 +550,10 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
     skinNet.eval()
     print("     skinning prediction network loaded.")
 
-    mesh_data_norm = NormalizedMeshData(mesh_obj)
-    data, surface_geodesic = create_single_data(mesh_data_norm)
+
+    cache = BrignetCache()
+    mesh_data_norm = cache.mesh_data(mesh_obj)
+    data, surface_geodesic = create_single_data()
     data.to(DEVICE)
 
     print("predicting joints")
@@ -530,7 +566,7 @@ def predict_rig(mesh_obj, bandwidth, threshold, downsample_skinning=True, decima
 
     print("predicting skinning")
     bvh_tree = mesh_data_norm.bvh_tree
-    pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, bvh_tree, subsampling=downsample_skinning, decimation=decimation, sampling=sampling)
+    pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, bvh_tree)
 
     # here we reverse the normalization to the original scale and position
     pred_rig.normalize(mesh_data_norm.scale_normalize, -mesh_data_norm.translation_normalize)

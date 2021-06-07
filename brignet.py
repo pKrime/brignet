@@ -86,11 +86,11 @@ class BrigNetPredict(bpy.types.Operator):
         bandwidth = (1 - wm.brignet_density) / 10
         threshold = wm.brignet_threshold/1000
 
+        # rignet is imported here rather than at general scope.
+        # This way the Load External Data operator can work even if pytorch is missing
+
         from . import rignetconnect
-        rignetconnect.predict_rig(wm.brignet_targetmesh, bandwidth, threshold,
-                                  wm.brignet_downsample_skin,
-                                  wm.brignet_downsample_decimate,
-                                  wm.brignet_downsample_sampling)
+        rignetconnect.predict_rig(wm.brignet_targetmesh, bandwidth, threshold)
 
         if wm.brignet_highrescollection:
             wm.brignet_highrescollection.hide_viewport = False
@@ -101,7 +101,7 @@ class BrigNetPredict(bpy.types.Operator):
 
 class BrignetPanel(bpy.types.Panel):
     """Creates a Panel in the scene context of the properties editor"""
-    bl_label = "Layout Demo"
+    bl_label = "bRigNet Meshes"
     bl_idname = "RIGNET_PT_layout"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -113,25 +113,21 @@ class BrignetPanel(bpy.types.Panel):
         wm = context.window_manager
 
         row = layout.row()
-        row.prop(wm, 'brignet_downsample_skin', text='Downsample Skinning')
+        row.label(text="Character Collection:")
 
-        if wm.brignet_downsample_skin:
-            row = layout.row()
-            col = row.column()
-            col.prop(wm, 'brignet_downsample_decimate', text='Decimation')
-            col = row.column()
-            col.prop(wm, 'brignet_downsample_sampling', text='Sampling')
-
-        row = layout.row()
-        col = row.column()
-        col.prop(wm, 'brignet_highrescollection', text='HighRes')
-        col = row.column()
+        split = layout.split(factor=0.8, align=False)
+        col = split.column()
+        col.prop(wm, 'brignet_highrescollection', text='')
+        col = split.column()
         col.operator('collection.brignet_collection', text='<-')
 
         row = layout.row()
-        col = row.column()
-        col.prop(wm, 'brignet_targetmesh', text='Target')
-        col = row.column()
+        row.label(text="Simple Mesh:")
+
+        split = layout.split(factor=0.8, align=False)
+        col = split.column()
+        col.prop(wm, 'brignet_targetmesh', text='')
+        col = split.column()
         col.operator('object.brignet_remesh', text='<-')
 
         if wm.brignet_targetmesh:
@@ -157,11 +153,6 @@ class BrignetPanel(bpy.types.Panel):
 
 
 def register_properties():
-    bpy.types.WindowManager.brignet_downsample_skin = BoolProperty(name="downsample_skinning", default=True)
-    bpy.types.WindowManager.brignet_downsample_decimate = IntProperty(name="downsample_decimate", default=3000)
-    bpy.types.WindowManager.brignet_downsample_sampling = IntProperty(name="downsample_sampling", default=1500)
-
-
     bpy.types.WindowManager.brignet_targetmesh = PointerProperty(type=bpy.types.Object,
                                                                  name="bRigNet Target Object",
                                                                  description="Mesh to use for skin prediction. Keep below 5000 triangles",

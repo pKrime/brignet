@@ -1,4 +1,3 @@
-
 import copy
 import logging
 from math import sqrt
@@ -28,6 +27,8 @@ class MeshSampler:
         self.vertices = vertices
         self.v_normals = v_normals
         self.areas = triangle_areas
+
+        self._surface_geodesic = None
 
     @property
     def has_vertex_normals(self):
@@ -78,7 +79,7 @@ class MeshSampler:
 
         return points, normals
 
-    def sample_points_poissondisk(self, number_of_points, init_factor=5):
+    def sample_points_poissondisk(self, number_of_points, init_factor=5, approximate=False):
         logger = logging.getLogger("SamplePointsPoissonDisk")
         if number_of_points < 1:
             logger.error("zero or negative number of points")
@@ -145,6 +146,22 @@ class MeshSampler:
 
         priority = copy.copy(queue)
         current_number_of_points = pcl_size
+
+        if approximate:
+            first_slice = number_of_points + number_of_points * int(init_factor/2)
+            step = init_factor * 2
+            while current_number_of_points > first_slice:
+                priority.sort(key=lambda q: q.weight)
+                for p in priority[-step:]:
+                    deleted[p.idx] = True
+                for p in priority[-step:]:
+                    nbs = kd.find_range(all_points[p.idx], r_max)
+                    for nb, nb_idx, nb_dist in nbs:
+                        queue[nb_idx].weight = compute_point_weight(nb_idx)
+
+                priority = priority[:-step]
+                current_number_of_points -= step
+
         while current_number_of_points > number_of_points:
             priority.sort(key=lambda q: q.weight)
 
@@ -165,7 +182,10 @@ class MeshSampler:
 
             yield point, normals[i]
 
-    def calc_geodesic(self, samples=1000):
+    def calc_geodesic(self, samples=2000):
+        if self._surface_geodesic is not None:
+            return self._surface_geodesic
+
         # RigNet uses 4000 samples, not sure this script can handle that.
 
         sampled = [(pt, normal) for pt, normal in self.sample_points_poissondisk(samples)]
@@ -175,11 +195,12 @@ class MeshSampler:
         pts_normal = np.asarray(sample_normals)
 
         time1 = time.time()
-        N = len(pts)
+        
         verts_dist = np.sqrt(np.sum((pts[np.newaxis, ...] - pts[:, np.newaxis, :]) ** 2, axis=2))
         verts_nn = np.argsort(verts_dist, axis=1)
-        conn_matrix = lil_matrix((N, N), dtype=np.float32)
 
+        N = len(pts)
+        conn_matrix = lil_matrix((N, N), dtype=np.float32)
         for p in range(N):
             nn_p = verts_nn[p, 1:6]
             norm_nn_p = np.linalg.norm(pts_normal[nn_p], axis=1)
@@ -187,8 +208,8 @@ class MeshSampler:
             cos_similar = np.dot(pts_normal[nn_p], pts_normal[p]) / (norm_nn_p * norm_p + 1e-10)
             nn_p = nn_p[cos_similar > -0.5]
             conn_matrix[p, nn_p] = verts_dist[p, nn_p]
-        [dist, predecessors] = dijkstra(conn_matrix, directed=False, indices=range(N),
-                                        return_predecessors=True, unweighted=False)
+        dist = dijkstra(conn_matrix, directed=False, indices=range(N),
+                        return_predecessors=False, unweighted=False)
 
         # replace inf distance with euclidean distance + 8
         # 6.12 is the maximal geodesic distance without considering inf, I add 8 to be safer.
@@ -202,7 +223,8 @@ class MeshSampler:
         vert_pts_nn = np.argmin(vert_pts_distance, axis=0)
         surface_geodesic = dist[vert_pts_nn, :][:, vert_pts_nn]
         time2 = time.time()
-        logger = logging.getLogger("SamplePointsPoissonDisk")
+        logger = logging.getLogger("Geodesic")
         logger.debug('surface geodesic calculation: {} seconds'.format((time2 - time1)))
 
+        self._surface_geodesic = surface_geodesic
         return surface_geodesic
