@@ -19,6 +19,9 @@ class BrignetRemesh(bpy.types.Operator):
 
     def execute(self, context):
         wm = context.window_manager
+        if wm.brignet_targetmesh:
+            # remove previous mesh
+            bpy.data.objects.remove(wm.brignet_targetmesh, do_unkink=True)
         new_ob = objects.mesh_from_collection(wm.brignet_highrescollection, name='brignet_remesh')
 
         remesh = new_ob.modifiers.new(name='remesh', type='REMESH')
@@ -49,16 +52,11 @@ class BrignetCollection(bpy.types.Operator):
         return True
 
     def execute(self, context):
-        default_collection = bpy.data.collections['Collection']
         collection = bpy.data.collections.new("BrignetGeometry")
         for ob in context.selected_objects:
             if ob.type != 'MESH':
                 continue
             collection.objects.link(ob)
-            try:
-                default_collection.objects.unlink(ob)
-            except RuntimeError:
-                pass
 
         bpy.context.scene.collection.children.link(collection)
         context.window_manager.brignet_highrescollection = collection
@@ -119,7 +117,7 @@ class BrignetPanel(bpy.types.Panel):
         col = split.column()
         col.prop(wm, 'brignet_highrescollection', text='')
         col = split.column()
-        col.operator('collection.brignet_collection', text='<-')
+        col.operator(BrignetCollection.bl_idname, text='<-')
 
         row = layout.row()
         row.label(text="Simple Mesh:")
@@ -128,7 +126,7 @@ class BrignetPanel(bpy.types.Panel):
         col = split.column()
         col.prop(wm, 'brignet_targetmesh', text='')
         col = split.column()
-        col.operator('object.brignet_remesh', text='<-')
+        col.operator(BrignetRemesh.bl_idname, text='<-')
 
         if wm.brignet_targetmesh:
             remesh_mod = next((mod for mod in wm.brignet_targetmesh.modifiers if mod.type == 'REMESH'), None)
