@@ -73,7 +73,7 @@ More complete information on the PyTorch command line can be found at the [PyTor
 The install command on non-cuda devices is
 
 ```
-conda install pytorch==1.6.0 cpuonly -c pytorch
+conda install pytorch==1.7.1 cpuonly -c pytorch
 ```
 
 - Install torch utilities. The syntax follows the pattern
@@ -82,17 +82,17 @@ conda install pytorch==1.6.0 cpuonly -c pytorch
 pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-[version]+cu[cuda-version].html
 ```
 
-Example:
+Pre-built packages for 1.7.1 and 1.8.1 are 1.7.0 and 1.8.0 anyway. Example:
 ```
-pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.6.0+cu102.html
-pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.6.0+cu102.html
-pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.6.0+cu102.html
-pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.6.0+cu102.html
+pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
+pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
+pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
+pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
 pip install torch-geometric
 ```
 
-Alternatively, pip can try and build the libraries via. Even if part of torch-sparse fail, pip should be able to build
-the rilevant modules
+Alternatively, pip can try and build the libraries. Even if part of torch-sparse fails without a proper environment,
+the rilevant modules are usually built
 
 ```
 pip install torch-scatter

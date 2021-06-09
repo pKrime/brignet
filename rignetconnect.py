@@ -261,10 +261,10 @@ def calc_pts2bone_visible_mat(bvhtree, origins, ends):
 
     min_hit_distance = []
     for ray_dir, origin in zip(ray_dirs, origins):
+        # FIXME: perhaps we should sample more distances
         location, normal, index, distance = bvhtree.ray_cast(origin, ray_dir + 1e-15)
         if location:
-            min_hit_distance.append(np.min(np.linalg.norm(location - origin, axis=1)))
-            pass
+            min_hit_distance.append(np.linalg.norm(np.array(location) - origin))
         else:
             min_hit_distance.append(np.linalg.norm(ray_dir))
 
