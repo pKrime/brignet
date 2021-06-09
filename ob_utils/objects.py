@@ -49,8 +49,7 @@ def copy_weights(ob_list, ob_source, apply_modifier=True):
     src_mod = get_armature_modifier(ob_source)
     src_mod.show_viewport = False
     src_mod.show_render = False
-    ob_source.hide_viewport = True
-    ob_source.hide_render = True
+    ob_source.hide_set(True)
 
     for ob in ob_list:
         remove_modifiers(ob)

@@ -21,7 +21,7 @@ class BrignetRemesh(bpy.types.Operator):
         wm = context.window_manager
         if wm.brignet_targetmesh:
             # remove previous mesh
-            bpy.data.objects.remove(wm.brignet_targetmesh, do_unkink=True)
+            bpy.data.objects.remove(wm.brignet_targetmesh, do_unlink=True)
         new_ob = objects.mesh_from_collection(wm.brignet_highrescollection, name='brignet_remesh')
 
         remesh = new_ob.modifiers.new(name='remesh', type='REMESH')
@@ -33,8 +33,12 @@ class BrignetRemesh(bpy.types.Operator):
         context.evaluated_depsgraph_get()
         decimate.ratio = 1800 / decimate.face_count
 
+        new_ob.hide_render = True
         wm.brignet_targetmesh = new_ob
-        wm.brignet_highrescollection.hide_viewport = True
+
+        collection_name = wm.brignet_highrescollection.name
+        view_layer = bpy.context.view_layer.layer_collection.children.get(collection_name)
+        view_layer.hide_viewport = True
         return {'FINISHED'}
 
 

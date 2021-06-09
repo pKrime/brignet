@@ -259,13 +259,18 @@ def calc_pts2bone_visible_mat(bvhtree, origins, ends):
     '''
     ray_dirs = ends - origins
 
-    distances = []
+    min_hit_distance = []
     for ray_dir, origin in zip(ray_dirs, origins):
         location, normal, index, distance = bvhtree.ray_cast(origin, ray_dir + 1e-15)
-        distances.append(distance if distance else 0)
+        if location:
+            min_hit_distance.append(np.min(np.linalg.norm(location - origin, axis=1)))
+            pass
+        else:
+            min_hit_distance.append(np.linalg.norm(ray_dir))
 
-    min_hit_distance = np.array(distances)
-    vis_mat = (np.abs(min_hit_distance) < 1e-4)
+    min_hit_distance = np.array(min_hit_distance)
+    distance = np.linalg.norm(ray_dirs, axis=1)
+    vis_mat = (np.abs(min_hit_distance - distance) < 1e-4)
     return vis_mat
 
 

@@ -182,7 +182,7 @@ class MeshSampler:
 
             yield point, normals[i]
 
-    def calc_geodesic(self, samples=2000):
+    def calc_geodesic(self, samples=4000):
         if self._surface_geodesic is not None:
             return self._surface_geodesic
 
