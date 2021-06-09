@@ -72,7 +72,7 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         # first stage
         col = box.column()
         row = col.row()
-        row.prop(self, 'modules_path', text='Modules Path')
+        row.prop(self, 'modules_path', text='Additional Modules Path')
         row = col.row()
         row.prop(self, 'model_path', text='Model Path')
 
