@@ -63,7 +63,7 @@ Built on Wed_Oct_23_19:32:27_Pacific_Daylight_Time_2019
 Cuda compilation tools, release 10.2, V10.2.89
 ```
 
-In this case pytorch can be installed in the command prompt via
+In this case PyTorch can be installed in the command prompt via
 
 ```
 conda install pytorch==1.8.1 cudatoolkit=10.2 -c pytorch
@@ -146,8 +146,6 @@ pip install torch-geometric
 
 the virtual environment directory can be set as the "Additional modules path" in the brignet preferences
 
- 
- 
 
 ### Using pip with blender's Python interpreter
 
