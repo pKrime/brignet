@@ -66,28 +66,28 @@ Cuda compilation tools, release 10.2, V10.2.89
 In this case pytorch can be installed in the command prompt via
 
 ```
-conda install pytorch==1.7.1 cudatoolkit=10.2 -c pytorch
+conda install pytorch==1.8.1 cudatoolkit=10.2 -c pytorch
 ```
 
 More complete information on the PyTorch command line can be found at the [PyTorch website](https://pytorch.org/)
 The install command on non-cuda devices is
 
 ```
-conda install pytorch==1.7.1 cpuonly -c pytorch
+conda install pytorch==1.8.1 cpuonly -c pytorch
 ```
 
 - Install torch utilities. The syntax follows the pattern
 
 ```
-pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-[version]+cu[cuda-version].html
+pip install [package-name] -f https://pytorch-geometric.com/whl/torch-[version]+cu[cuda-version].html
 ```
 
 Pre-built packages for 1.7.1 and 1.8.1 are 1.7.0 and 1.8.0 anyway. Example:
 ```
-pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
-pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
-pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
-pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.7.0+cu102.html
+pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
 pip install torch-geometric
 ```
 
