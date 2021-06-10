@@ -35,7 +35,7 @@ Environment managers, like conda or virtualenv can be used to ease the install.
 To take advantage of GPU hardware, PyTorch requires the CUDA toolkit, which can be found at the
 [manifacturer website](https://developer.nvidia.com)
 
-### Setup with conda
+### Install the required modules using *conda*
 
 Anaconda is a data science platform from Anaconda Inc., it can be downloaded from the
 [company website](https://www.anaconda.com/).
@@ -48,7 +48,7 @@ Both versions include the package manager 'conda' used in the following steps.
 
 ```
 conda create -n brignet python=3.7
-conda activate brignet
+conda activate brignet_deps
 ```
 
 - Install PyTorch. If CUDA is installed, the CUDA version can be queried in a command prompt. For example
@@ -66,7 +66,7 @@ Cuda compilation tools, release 10.2, V10.2.89
 In this case pytorch can be installed in the command prompt via
 
 ```
-conda install pytorch==1.6.0 cudatoolkit=10.2 -c pytorch
+conda install pytorch==1.7.1 cudatoolkit=10.2 -c pytorch
 ```
 
 More complete information on the PyTorch command line can be found at the [PyTorch website](https://pytorch.org/)
@@ -100,7 +100,7 @@ pip install torch-sparse
 pip install torch-geometric
 ```
 
-The directory of each environment can be obtain via
+The directory of each environment can be obtained via
 
 ```
 conda info --envs
@@ -108,7 +108,48 @@ conda info --envs
 
 The environment directory can be set in the "Additional Modules" setting of the bRigNet preferences
 
-### Using pip
+### Install the required modules using virtualenv
+
+Alternatively, virtualenv can be used to create a Python environment with the required packages.
+First, python 3.7 must be installed on the system. It can be found at https://www.python.org/downloads/
+
+Make sure that **Add Python 3.7 to PATH** is checked in the setup options.    
+
+Usually, python comes with its package manager installed (pip). Please, refer
+to the [pip documentation](https://pypi.org/project/pip/) if pip is not present in your system.
+
+Next step is to install virtualenv. Open a command prompt and reach a folder where python packages will be kept
+please execute.
+
+```
+pip install virtualenv
+```
+
+then create the virtual environment and activate it
+
+```
+virtualenv brignet_deps
+cd brignet_deps
+Scripts\activate
+```
+
+now we can install the torch library. At present, version 1.8.1 is provided. Cuda 10.2 is used in this example:
+
+```
+pip install torch==1.8.1+cu102 -f https://download.pytorch.org/whl/torch_stable.html
+pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-geometric
+```
+
+the virtual environment directory can be set as the "Additional modules path" in the brignet preferences
+
+ 
+ 
+
+### Using pip with blender's Python interpreter
 
 You can install pip following [this guide](http://www.codeplastic.com/2019/03/12/how-to-install-python-modules-in-blender/ "pip in blender"),
 then
