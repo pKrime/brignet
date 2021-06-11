@@ -182,9 +182,6 @@ def register_properties():
 
 
 def unregister_properties():
-    del bpy.types.WindowManager.brignet_downsample_skin
-    del bpy.types.WindowManager.brignet_downsample_decimate
-    del bpy.types.WindowManager.brignet_downsample_sampling
     del bpy.types.WindowManager.brignet_targetmesh
     del bpy.types.WindowManager.brignet_highrescollection
     del bpy.types.WindowManager.brignet_density

@@ -2,9 +2,18 @@ import os
 import sys
 import bpy
 
+from .setup_utils import cuda_utils
+from importlib import reload
+reload(cuda_utils)
+
 
 class BrignetPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__
+    _cuda_info = None
+
+    @staticmethod
+    def check_cuda():
+        BrignetPrefs._cuda_info = cuda_utils.CudaDetect()
 
     @staticmethod
     def append_modules():
@@ -67,9 +76,33 @@ class BrignetPrefs(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
         column = layout.column()
+
+        info = BrignetPrefs._cuda_info
+        if info:
+            if info.result == cuda_utils.CudaResult.SUCCESS:
+                row = column.row()
+                row.label(text=f"Cuda Version: {info.major}.{info.minor}.{info.release}")
+            elif info.result == cuda_utils.CudaResult.NOT_FOUND:
+                row = column.row()
+                row.label(text="CUDA Toolkit not found", icon='ERROR')
+
+                if info.has_cuda_hardware:
+                    row = column.row()
+                    split = row.split(factor=0.1, align=False)
+                    split.column()
+                    col = split.column()
+                    col.label(text="CUDA hardware is present. Please make sure CUDA Toolkit is installed")
+
+                    op = col.operator(
+                        'wm.url_open',
+                        text='nVidia Downloads',
+                        icon='URL'
+                    )
+                    op.url = 'https://developer.nvidia.com/downloads'
+
+
         box = column.box()
 
-        # first stage
         col = box.column()
         row = col.row()
         row.prop(self, 'modules_path', text='Additional Modules Path')

@@ -65,6 +65,7 @@ def register():
     bpy.utils.register_class(LoadRignetSkeleton)
     bpy.utils.register_class(LoadSkeletonPanel)
 
+    BrignetPrefs.check_cuda()
     if not BrignetPrefs.append_modules():
         print("Modules path not found, please set in bRigNet preferences")
 
