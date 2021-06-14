@@ -1,7 +1,15 @@
+from enum import Enum
+
+import blf
 import bpy
 from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
 
 from .ob_utils import objects
+try:
+    from . import rignetconnect
+    MODULES_FOUND = True
+except ModuleNotFoundError:
+    MODULES_FOUND = False
 
 
 class BrignetRemesh(bpy.types.Operator):
@@ -68,37 +76,115 @@ class BrignetCollection(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def draw_callback_px(self, context):
+    font_id = 0
+
+    # draw some text
+    blf.color(font_id, 0.9, 0.9, 0.9, 0.8)
+    blf.position(font_id, 15, 30, 0)
+    blf.size(font_id, 20, 72)
+    blf.draw(font_id, self.current_step.name.replace('_', ' '))
+
+
+class PredictSteps(Enum):
+    NotStarted = 0
+    Loading_Networks = 1
+    Creating_Data = 2
+    Predicting_Joints = 3
+    Predicting_Hierarchy = 4
+    Predicting_Weights = 5
+    Creating_Armature = 6
+    Finished = 7
+
+
 class BrigNetPredict(bpy.types.Operator):
     """Predict joint position of chosen mesh using a trained model"""
     bl_idname = "object.brignet_predict"
     bl_label = "Predict joints and skinning"
 
+    bandwidth: FloatProperty()
+    threshold: FloatProperty()
+    current_step: PredictSteps
+
+    _timer = None
+    _handle = None
+
+    _networks = None
+    _mesh_storage = None
+    _pred_data = None
+    _pred_skeleton = None
+    _pred_rig = None
+
     @classmethod
     def poll(cls, context):
+        if not MODULES_FOUND:
+            return False
+
         wm = context.window_manager
         if not wm.brignet_targetmesh:
             return False
 
         return wm.brignet_targetmesh.type == 'MESH'
 
-    def execute(self, context):
+    def clean_up(self, context):
+        bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+        context.window_manager.event_timer_remove(self._timer)
+        rignetconnect.clear()
+
+    def modal(self, context, event):
+        """Go through the prediction steps and show feedback"""
+        context.area.tag_redraw()
+        if event.type == 'ESC':
+            self.clean_up(context)
+            return {'CANCELLED'}
+
         wm = context.window_manager
-        objects.remove_modifiers(wm.brignet_targetmesh, type_list=('ARMATURE',))
+        if self.current_step == PredictSteps.Loading_Networks:
+            self._networks = rignetconnect.Networks()
+        elif self.current_step == PredictSteps.Creating_Data:
+            self._pred_data, self._mesh_storage = rignetconnect.init_data(wm.brignet_targetmesh)
+        elif self.current_step == PredictSteps.Predicting_Joints:
+            self._pred_data = rignetconnect.predict_joint(self._pred_data, self._networks.joint_net, self._mesh_storage,
+                                                          self.bandwidth, self.threshold)
+        elif self.current_step == PredictSteps.Predicting_Hierarchy:
+            self._pred_skeleton = rignetconnect.predict_hierarchy(self._pred_data, self._networks, self._mesh_storage)
+        elif self.current_step == PredictSteps.Predicting_Weights:
+            self._pred_rig = rignetconnect.predict_weights(self._pred_data, self._pred_skeleton,
+                                                        self._networks.skin_net, self._mesh_storage)
+        elif self.current_step == PredictSteps.Creating_Armature:
+            rignetconnect.create_armature(wm.brignet_targetmesh, self._pred_rig)
+        elif self.current_step == PredictSteps.Finished:
+            self.clean_up(context)
 
-        bandwidth = (1 - wm.brignet_density) / 10
-        threshold = wm.brignet_threshold/1000
+            if wm.brignet_highrescollection:
+                wm.brignet_highrescollection.hide_viewport = False
+                objects.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
 
-        # rignet is imported here rather than at general scope.
-        # This way the Load External Data operator can work even if pytorch is missing
+            return {'FINISHED'}
 
-        from . import rignetconnect
-        rignetconnect.predict_rig(wm.brignet_targetmesh, bandwidth, threshold)
+        # Advance current state
+        try:
+            self.current_step = PredictSteps(self.current_step.value + 1)
+        except ValueError:
+            self.clean_up(context)
+            return {'FINISHED'}
 
-        if wm.brignet_highrescollection:
-            wm.brignet_highrescollection.hide_viewport = False
-            objects.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
+        return {'INTERFACE'}
 
-        return {'FINISHED'}
+    def invoke(self, context, event):
+        wm = context.window_manager
+
+        self.bandwidth = (1 - wm.brignet_density) / 10
+        self.threshold = wm.brignet_threshold/1000
+        self.current_step = PredictSteps(0)
+
+        args = (self, context)
+        self._handle = bpy.types.SpaceView3D.draw_handler_add(draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
+        # timer event makes sure that the modal script is executed even without user interaction
+        self._timer = wm.event_timer_add(0.1, window=context.window)
+        wm.modal_handler_add(self)
+
+        return {'RUNNING_MODAL'}
 
 
 class BrignetPanel(bpy.types.Panel):

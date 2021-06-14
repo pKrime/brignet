@@ -44,18 +44,9 @@ from .preferences import BrignetPrefs
 from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
 
 
-
 # REGISTER #
 
 def register():
-    from importlib import reload
-    try:
-        reload(brignet)
-        reload(preferences)
-        reload(loadskeleton)
-    except NameError:
-        pass
-
     brignet.register_properties()
     bpy.utils.register_class(BrignetPrefs)
     bpy.utils.register_class(BrignetCollection)

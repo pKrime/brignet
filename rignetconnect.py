@@ -32,43 +32,45 @@ from .ob_utils.objects import ArmatureGenerator
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-class BrignetCache:
-    """Singleton class to store cache"""
+class MeshStorage:
+    """Store Mesh Data and samples"""
     _instance = None  # stores singleton instance
 
-    _mesh_sampler_cache = None
     _mesh_data = None
-    _cached_object = None
+    _mesh_sampler = None
+    _surf_geodesic = None
+    _voxels = None
 
-    @classmethod
-    def exists(cls):
-        return bool(cls._instance)
+    def set_mesh_data(self, mesh_obj):
+        self._mesh_data = NormalizedMeshData(mesh_obj)
 
-    def __new__(cls):
-        """Singleton implementation: initialize only once, return existing instance at any subsequent attempt"""
-        if cls._instance is None:
-            instance = super().__new__(cls)
-            cls._instance = instance
-
-        return cls._instance
-
-    def mesh_data(self, mesh_obj=None):
-        if not self._mesh_data:
-            self._mesh_data = NormalizedMeshData(mesh_obj)
-        elif mesh_obj and mesh_obj != self._cached_object:
-            self._mesh_data = NormalizedMeshData(mesh_obj)
-            self._cached_object = mesh_obj
-            self._mesh_sampler_cache = None
-
-        # TODO: check geometry
+    @property
+    def mesh_data(self):
+        assert self._mesh_data is not None
         return self._mesh_data
 
     @property
+    def surface_geodesic(self):
+        if self._surf_geodesic is None:
+            assert self._mesh_data is not None
+            self._surf_geodesic = self.mesh_sampler.calc_geodesic()
+        return self._surf_geodesic
+
+    @property
+    def voxels(self):
+        if self._voxels is None:
+            assert self._mesh_data is not None
+            self._voxels = self._mesh_data.voxels()
+
+        return self._voxels
+
+    @property
     def mesh_sampler(self):
-        if not self._mesh_sampler_cache:
-            self._mesh_sampler_cache = mesh_sampling.MeshSampler(self._mesh_data.mesh_f, self._mesh_data.mesh_v,
-                                                                 self._mesh_data.mesh_vn, self._mesh_data.tri_areas)
-        return self._mesh_sampler_cache
+        if self._mesh_sampler is None:
+            assert self._mesh_data is not None
+            self._mesh_sampler = mesh_sampling.MeshSampler(self._mesh_data.mesh_f, self._mesh_data.mesh_v,
+                                                           self._mesh_data.mesh_vn, self._mesh_data.tri_areas)
+        return self._mesh_sampler
 
 
 def getInitId(data, model):
@@ -85,14 +87,12 @@ def getInitId(data, model):
     return root_id
 
 
-def create_single_data():
+def create_single_data(mesh_storage: MeshStorage):
     """
     create input data for the network. The data is wrapped by Data structure in pytorch-geometric library
-    :param mesh_obj: input mesh
-    :return: wrapped data, voxelized mesh, and geodesic distance matrix of all vertices
     """
 
-    mesh_data = BrignetCache().mesh_data()
+    mesh_data = mesh_storage.mesh_data
 
     # vertices
     v = np.concatenate((mesh_data.mesh_v, mesh_data.mesh_vn), axis=1)
@@ -105,7 +105,7 @@ def create_single_data():
     # surface geodesic distance matrix
     print("     calculating surface geodesic matrix.")
 
-    surface_geodesic = BrignetCache().mesh_sampler.calc_geodesic()
+    surface_geodesic = mesh_storage.surface_geodesic
     # geodesic edges
     print("     gathering geodesic edges.")
     geo_e = get_geo_edges(surface_geodesic, mesh_data.mesh_v).T
@@ -114,11 +114,11 @@ def create_single_data():
     # batch
     batch = torch.zeros(len(v), dtype=torch.long)
 
-    data = Data(x=v[:, 3:6], pos=v[:, 0:3], tpl_edge_index=tpl_e, geo_edge_index=geo_e, batch=batch)
-    return data, surface_geodesic
+    geo_data = Data(x=v[:, 3:6], pos=v[:, 0:3], tpl_edge_index=tpl_e, geo_edge_index=geo_e, batch=batch)
+    return geo_data
 
 
-def predict_joints(input_data, vox, joint_pred_net, threshold, bandwidth=None, mesh_filename=None):
+def add_joints_data(input_data, vox, joint_pred_net, threshold, bandwidth=None, mesh_filename=None):
     """
     Predict joints
     :param input_data: wrapped input data
@@ -516,66 +516,88 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
     return skel_res
 
 
-def predict_rig(mesh_obj, bandwidth, threshold):
-    print("predicting rig")
-    # downsample_skinning is used to speed up the calculation of volumetric geodesic distance
-    # and to save cpu memory in skinning calculation.
-    # Change to False to be more accurate but less efficient.
+class Networks:
+    def __init__(self, model_dir="", load_networks=True):
+        self.joint_net = None
+        self.root_net = None
+        self.bone_net = None
+        self.skin_net = None
 
-    # load all weights
-    print("loading all networks...")
+        self.model_dir = model_dir if model_dir else bpy.context.preferences.addons[__package__].preferences.model_path
 
-    model_dir = bpy.context.preferences.addons[__package__].preferences.model_path
+        if load_networks:
+            self.load_networks()
 
-    jointNet = JOINTNET()
-    jointNet.to(DEVICE)
-    jointNet.eval()
-    jointNet_checkpoint = torch.load(os.path.join(model_dir, 'gcn_meanshift/model_best.pth.tar'))
-    jointNet.load_state_dict(jointNet_checkpoint['state_dict'])
-    print("     joint prediction network loaded.")
+    def load_networks(self):
+        print("loading all networks...")
+        joint_net = JOINTNET()
+        joint_net.to(DEVICE)
+        joint_net.eval()
+        joint_net_checkpoint = torch.load(os.path.join(self.model_dir, 'gcn_meanshift/model_best.pth.tar'))
+        joint_net.load_state_dict(joint_net_checkpoint['state_dict'])
+        self.joint_net = joint_net
+        print("     joint prediction network loaded.")
 
-    rootNet = ROOTNET()
-    rootNet.to(DEVICE)
-    rootNet.eval()
-    rootNet_checkpoint = torch.load(os.path.join(model_dir, 'rootnet/model_best.pth.tar'))
-    rootNet.load_state_dict(rootNet_checkpoint['state_dict'])
-    print("     root prediction network loaded.")
+        root_net = ROOTNET()
+        root_net.to(DEVICE)
+        root_net.eval()
+        root_net_checkpoint = torch.load(os.path.join(self.model_dir, 'rootnet/model_best.pth.tar'))
+        root_net.load_state_dict(root_net_checkpoint['state_dict'])
+        self.root_net = root_net
+        print("     root prediction network loaded.")
 
-    boneNet = BONENET()
-    boneNet.to(DEVICE)
-    boneNet.eval()
-    boneNet_checkpoint = torch.load(os.path.join(model_dir, 'bonenet/model_best.pth.tar'))
-    boneNet.load_state_dict(boneNet_checkpoint['state_dict'])
-    print("     connection prediction network loaded.")
+        bone_net = BONENET()
+        bone_net.to(DEVICE)
+        bone_net.eval()
+        bone_net_checkpoint = torch.load(os.path.join(self.model_dir, 'bonenet/model_best.pth.tar'))
+        bone_net.load_state_dict(bone_net_checkpoint['state_dict'])
+        self.bone_net = bone_net
+        print("     connection prediction network loaded.")
 
-    skinNet = SKINNET(nearest_bone=5, use_Dg=True, use_Lf=True)
-    skinNet_checkpoint = torch.load(os.path.join(model_dir, 'skinnet/model_best.pth.tar'))
-    skinNet.load_state_dict(skinNet_checkpoint['state_dict'])
-    skinNet.to(DEVICE)
-    skinNet.eval()
-    print("     skinning prediction network loaded.")
+        skin_net = SKINNET(nearest_bone=5, use_Dg=True, use_Lf=True)
+        skin_net_checkpoint = torch.load(os.path.join(self.model_dir, 'skinnet/model_best.pth.tar'))
+        skin_net.load_state_dict(skin_net_checkpoint['state_dict'])
+        skin_net.to(DEVICE)
+        skin_net.eval()
+        self.skin_net = skin_net
+        print("     skinning prediction network loaded.")
 
 
-    cache = BrignetCache()
-    mesh_data_norm = cache.mesh_data(mesh_obj)
-    data, surface_geodesic = create_single_data()
-    data.to(DEVICE)
+def init_data(mesh_obj):
+    mesh_storage = MeshStorage()
+    mesh_storage.set_mesh_data(mesh_obj)
 
+    predict_data = create_single_data(mesh_storage)
+    predict_data.to(DEVICE)
+
+    return predict_data, mesh_storage
+
+
+def predict_joint(predict_data, joint_network, mesh_storage: MeshStorage, bandwidth, threshold):
     print("predicting joints")
-    vox = mesh_data_norm.voxels()
-    data = predict_joints(data, vox, jointNet, threshold, bandwidth=bandwidth)
+    predict_data = add_joints_data(predict_data, mesh_storage.voxels, joint_network, threshold, bandwidth=bandwidth)
+    predict_data.to(DEVICE)
+    return predict_data
 
-    data.to(DEVICE)
+
+def predict_hierarchy(predict_data, networks: Networks, mesh_storage: MeshStorage):
     print("predicting connectivity")
-    pred_skeleton = predict_skeleton(data, vox, rootNet, boneNet)
+    predicted_skeleton = predict_skeleton(predict_data, mesh_storage.voxels, networks.root_net, networks.bone_net)
+    return predicted_skeleton
 
+
+def predict_weights(predict_data, predicted_skeleton, skin_network, mesh_storage: MeshStorage):
     print("predicting skinning")
-    bvh_tree = mesh_data_norm.bvh_tree
-    pred_rig = predict_skinning(data, pred_skeleton, skinNet, surface_geodesic, bvh_tree)
+    mesh_data = mesh_storage.mesh_data
+    bvh_tree = mesh_data.bvh_tree
+    predicted_rig = predict_skinning(predict_data, predicted_skeleton, skin_network, mesh_storage.surface_geodesic, bvh_tree)
 
     # here we reverse the normalization to the original scale and position
-    pred_rig.normalize(mesh_data_norm.scale_normalize, -mesh_data_norm.translation_normalize)
+    predicted_rig.normalize(mesh_data.scale_normalize, -mesh_data.translation_normalize)
+    return predicted_rig
 
+
+def create_armature(mesh_obj, predicted_rig):
     mesh_obj.vertex_groups.clear()
 
     for obj in bpy.data.objects:
@@ -585,7 +607,7 @@ def predict_rig(mesh_obj, bandwidth, threshold):
                   (0.0, 0, -1.0, 0.0),
                   (0.0, 1, 0, 0.0),
                   (0.0, 0.0, 0.0, 1.0)))
-    ArmatureGenerator(pred_rig, mesh_obj).generate(matrix=mat)
+    ArmatureGenerator(predicted_rig, mesh_obj).generate(matrix=mat)
     torch.cuda.empty_cache()
 
 
