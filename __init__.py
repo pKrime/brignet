@@ -40,7 +40,7 @@ except NameError:
     pass
 
 from .brignet import BrignetPanel, BrigNetPredict, BrignetRemesh, BrignetCollection
-from .preferences import BrignetPrefs
+from .preferences import BrignetPrefs, BrignetEnvironment, BrignetCheckpoints
 from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
 
 
@@ -48,6 +48,8 @@ from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
 
 def register():
     brignet.register_properties()
+    bpy.utils.register_class(BrignetEnvironment)
+    bpy.utils.register_class(BrignetCheckpoints)
     bpy.utils.register_class(BrignetPrefs)
     bpy.utils.register_class(BrignetCollection)
     bpy.utils.register_class(BrignetRemesh)
@@ -57,8 +59,9 @@ def register():
     bpy.utils.register_class(LoadSkeletonPanel)
 
     BrignetPrefs.check_cuda()
-    if not BrignetPrefs.append_modules():
+    if not BrignetPrefs.add_module_paths():
         print("Modules path not found, please set in bRigNet preferences")
+    BrignetPrefs.check_modules()
 
 
 def unregister():
@@ -69,8 +72,12 @@ def unregister():
         # if we have failed to load rignetconnect, we have no device to clear
         pass
 
+    BrignetPrefs.reset_module_paths()
+
     bpy.utils.unregister_class(BrignetPanel)
     bpy.utils.unregister_class(BrignetPrefs)
+    bpy.utils.unregister_class(BrignetCheckpoints)
+    bpy.utils.unregister_class(BrignetEnvironment)
     bpy.utils.unregister_class(BrignetCollection)
     bpy.utils.unregister_class(BrignetRemesh)
     bpy.utils.unregister_class(BrigNetPredict)

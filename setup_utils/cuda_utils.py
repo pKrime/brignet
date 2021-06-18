@@ -1,5 +1,8 @@
 import bpy
 
+import os
+import sys
+
 from enum import Enum
 import subprocess
 
@@ -15,11 +18,31 @@ class CudaDetect:
         self.result = None
         self.major = 0
         self.minor = 0
-        self.release = 0
+        self.micro = 0
         self.has_cuda_hardware = False
 
         self.has_cuda_device()
         self.detect_cuda_ver()
+
+    @staticmethod
+    def get_cuda_path():
+        try:
+            return os.environ['CPATH']
+        except KeyError:
+            pass
+
+        where_cmd = "where" if sys.platform.startswith('win') else "whereis"
+        result = subprocess.check_output([where_cmd, 'nvcc']).decode('UTF-8')
+
+        if '\n' in result:
+            nvcc_path = result.split('\n', 1)[0]
+        else:
+            nvcc_path = result.split('\t', 1)[0]
+
+        nvcc_dir, _ = os.path.split(nvcc_path)
+        cuda_dir = os.path.dirname(nvcc_dir)
+
+        return cuda_dir
 
     def has_cuda_device(self):
         """Checks for cuda hardware in cycles preferences"""
@@ -44,5 +67,5 @@ class CudaDetect:
         ver = nvcc_out.rsplit(" V", 1)[-1]
         ver = ver.strip("'\\r\\n")
 
-        self.major, self.minor, self.release = ver.split(".", 2)
+        self.major, self.minor, self.micro = ver.split(".", 2)
         self.result = CudaResult.SUCCESS

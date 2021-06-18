@@ -82,12 +82,11 @@ conda install pytorch==1.8.1 cpuonly -c pytorch
 pip install [package-name] -f https://pytorch-geometric.com/whl/torch-[version]+cu[cuda-version].html
 ```
 
-Pre-built packages for 1.7.1 and 1.8.1 are 1.7.0 and 1.8.0 anyway. Example:
 ```
-pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
-pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
-pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
-pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
+pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
+pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
+pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
 pip install torch-geometric
 ```
 
@@ -133,28 +132,21 @@ cd brignet_deps
 Scripts\activate
 ```
 
-now we can install the torch library. At present, version 1.8.1 is provided. Cuda 10.2 is used in this example:
+now we can install the torch library. At present, version 1.8.1 is provided.
+torch-geometric provides prebuilt packages for CUDA 10.1, 10.2, 11.1
+
+CUDA 10.2 is used in this example:
 
 ```
 pip install torch==1.8.1+cu102 -f https://download.pytorch.org/whl/torch_stable.html
-pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
-pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
-pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
-pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.8.0+cu102.html
+pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
+pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
+pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
+pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.8.1+cu102.html
 pip install torch-geometric
 ```
 
 the virtual environment directory can be set as the "Additional modules path" in the brignet preferences
-
-
-### Using pip with blender's Python interpreter
-
-You can install pip following [this guide](http://www.codeplastic.com/2019/03/12/how-to-install-python-modules-in-blender/ "pip in blender"),
-then
-
-```
-[BLENDER_DIR]\[BLENDER_VER]\python\bin\python -m pip install --upgrade Pillow
-```
 
 ## Installation
 
