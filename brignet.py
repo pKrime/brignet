@@ -5,11 +5,12 @@ import bpy
 from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
 
 from .ob_utils import objects
+from .preferences import BrignetPrefs
+
 try:
     from . import rignetconnect
-    MODULES_FOUND = True
 except ModuleNotFoundError:
-    MODULES_FOUND = False
+    pass
 
 
 class BrignetRemesh(bpy.types.Operator):
@@ -117,7 +118,9 @@ class BrigNetPredict(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if not MODULES_FOUND:
+        modules_found = bpy.context.preferences.addons[__package__].preferences.modules_found
+        if not modules_found:
+            # TODO: we should rather gray out the whole panel and display a warning
             return False
 
         wm = context.window_manager
@@ -172,6 +175,9 @@ class BrigNetPredict(bpy.types.Operator):
         return {'INTERFACE'}
 
     def invoke(self, context, event):
+        global rignetconnect
+        from . import rignetconnect
+
         wm = context.window_manager
 
         self.bandwidth = (1 - wm.brignet_density) / 10

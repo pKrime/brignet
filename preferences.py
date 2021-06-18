@@ -125,12 +125,20 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         default=os.path.join(os.path.join(os.path.dirname(__file__)), 'RigNet', 'checkpoints')
     )
 
+    modules_found: bpy.props.BoolProperty(
+        name='Required Modules',
+        description="Wether required modules have been found"
+    )
+
     @staticmethod
     def check_modules():
         BrignetPrefs.missing_modules.clear()
         for mod_name in ('torch', 'torch_geometric', 'torch_cluster', 'torch_sparse', 'torch_scatter', 'scipy'):
             if not find_spec(mod_name):
                 BrignetPrefs.missing_modules.append(mod_name)
+
+        preferences = bpy.context.preferences.addons[__package__].preferences
+        preferences.modules_found = len(BrignetPrefs.missing_modules) == 0
 
     def draw(self, context):
         layout = self.layout
