@@ -40,7 +40,7 @@ except NameError:
     pass
 
 from .brignet import BrignetPanel, BrigNetPredict, BrignetRemesh, BrignetCollection
-from .preferences import BrignetPrefs, BrignetEnvironment, BrignetCheckpoints
+from .preferences import BrignetPrefs, BrignetEnvironment
 from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
 
 
@@ -49,7 +49,6 @@ from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
 def register():
     brignet.register_properties()
     bpy.utils.register_class(BrignetEnvironment)
-    bpy.utils.register_class(BrignetCheckpoints)
     bpy.utils.register_class(BrignetPrefs)
     bpy.utils.register_class(BrignetCollection)
     bpy.utils.register_class(BrignetRemesh)
@@ -76,7 +75,6 @@ def unregister():
 
     bpy.utils.unregister_class(BrignetPanel)
     bpy.utils.unregister_class(BrignetPrefs)
-    bpy.utils.unregister_class(BrignetCheckpoints)
     bpy.utils.unregister_class(BrignetEnvironment)
     bpy.utils.unregister_class(BrignetCollection)
     bpy.utils.unregister_class(BrignetRemesh)

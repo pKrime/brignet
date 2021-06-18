@@ -29,24 +29,6 @@ class BrignetEnvironment(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class BrignetCheckpoints(bpy.types.Operator):
-    """Download Checkpoints"""
-    bl_idname = "wm.brignet_checkpoints"
-    bl_label = "Download Checkpoints"
-
-    @classmethod
-    def poll(cls, context):
-        wm = context.window_manager
-        if not wm.brignet_highrescollection:
-            return False
-
-        return True
-
-    def execute(self, context):
-        raise NotImplementedError
-        return {'FINISHED'}
-
-
 class BrignetPrefs(bpy.types.AddonPreferences):
     bl_idname = __package__
 
@@ -184,7 +166,7 @@ class BrignetPrefs(bpy.types.AddonPreferences):
 
         if self.missing_modules:
             sp_col = split.column()
-            sp_col.operator(BrignetEnvironment.bl_idname, text='Create')
+            sp_col.operator(BrignetEnvironment.bl_idname, text='Install')
 
         row = col.row()
         split = row.split(factor=0.8, align=False)
@@ -192,7 +174,20 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         sp_col.prop(self, 'model_path', text='Model Path')
         if not os.path.isdir(self.model_path) or 'bonenet' not in os.listdir(self.model_path):
             sp_col = split.column()
-            sp_col.operator(BrignetCheckpoints.bl_idname, text='Create')
+            op = sp_col.operator(
+                'wm.url_open',
+                text='Download'
+            )
+            op.url = "https://umass.box.com/s/l7dxfayrubf5qzxcyg7can715xnislwm"
+
+            row = col.row()
+
+            if self.model_path:
+                row.label(text="Please, unpack the content of 'checkpoints' to")
+                row = col.row()
+                row.label(text=f"    {self.model_path}")
+            else:
+                row.label(text="Please, unpack the content of 'checkpoints' to the 'Model Path' folder")
 
         row = layout.row()
         row.label(text="End of bRigNet Preferences")
