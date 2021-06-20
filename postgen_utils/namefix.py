@@ -45,23 +45,23 @@ class NameFix:
 
         new_names = dict()
 
-        for lbone in self.names_to_bones(self.left_bones):
-            if lbone.name.endswith(('.L', '.R')):
+        for rbone in self.names_to_bones(self.right_bones):
+            if rbone.name.endswith('.R'):
                 continue
 
-            new_names[lbone.name] = lbone.name + ".L"
+            new_names[rbone.name] = rbone.name + ".R"
 
-            right_loc = lbone.head_local.copy()
-            right_loc.x = -right_loc.x
+            left_loc = rbone.head_local.copy()
+            left_loc.x = -left_loc.x
 
-            for rbone in self.names_to_bones(self.right_bones):
+            for lbone in self.names_to_bones(self.left_bones):
                 match = True
                 for i in range(3):
-                    if abs(rbone.head_local[i] - right_loc[i]) > threshold:
+                    if abs(lbone.head_local[i] - left_loc[i]) > threshold:
                         match = False
                         break
                 if match:
-                    new_names[rbone.name] = lbone.name + ".R"
+                    new_names[lbone.name] = rbone.name + ".L"
 
         for k, v in new_names.items():
             self.armature.data.bones[k].name = v
