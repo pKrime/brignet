@@ -109,7 +109,7 @@ class BrignetPrefs(bpy.types.AddonPreferences):
 
     modules_found: bpy.props.BoolProperty(
         name='Required Modules',
-        description="Wether required modules have been found"
+        description="Whether required modules have been found or not"
     )
 
     @staticmethod

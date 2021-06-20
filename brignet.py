@@ -5,7 +5,6 @@ import bpy
 from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
 
 from .ob_utils import objects
-from .preferences import BrignetPrefs
 
 try:
     from . import rignetconnect
@@ -77,16 +76,6 @@ class BrignetCollection(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def draw_callback_px(self, context):
-    font_id = 0
-
-    # draw some text
-    blf.color(font_id, 0.9, 0.9, 0.9, 0.8)
-    blf.position(font_id, 15, 30, 0)
-    blf.size(font_id, 20, 72)
-    blf.draw(font_id, self.current_step.name.replace('_', ' '))
-
-
 class PredictSteps(Enum):
     NotStarted = 0
     Loading_Networks = 1
@@ -97,6 +86,32 @@ class PredictSteps(Enum):
     Creating_Armature = 6
     Finished = 7
 
+    @staticmethod
+    def last():
+        return PredictSteps.Finished
+
+    @property
+    def icon(self):
+        if self.value == self.Loading_Networks.value:
+            return 'NETWORK_DRIVE'
+        if self.value == self.Creating_Data.value:
+            return 'OUTLINER_DATA_POINTCLOUD'
+        if self.value == self.Predicting_Joints.value:
+            return 'BONE_DATA'
+        if self.value == self.Predicting_Hierarchy.value:
+            return 'ARMATURE_DATA'
+        if self.value == self.Predicting_Weights.value:
+            return 'OUTLINER_OB_ARMATURE'
+        if self.value == self.Creating_Armature.value:
+            return 'SCENE_DATA'
+        if self.value == self.Finished.value:
+            return 'CHECKMARK'
+        return 'NONE'
+
+    @property
+    def nice_name(self):
+        return self.name.replace('_', ' ')
+
 
 class BrigNetPredict(bpy.types.Operator):
     """Predict joint position of chosen mesh using a trained model"""
@@ -105,11 +120,9 @@ class BrigNetPredict(bpy.types.Operator):
 
     bandwidth: FloatProperty()
     threshold: FloatProperty()
-    current_step: PredictSteps
+    current_step: PredictSteps.NotStarted
 
     _timer = None
-    _handle = None
-
     _networks = None
     _mesh_storage = None
     _pred_data = None
@@ -130,8 +143,9 @@ class BrigNetPredict(bpy.types.Operator):
         return wm.brignet_targetmesh.type == 'MESH'
 
     def clean_up(self, context):
-        bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
-        context.window_manager.event_timer_remove(self._timer)
+        wm = context.window_manager
+        wm.event_timer_remove(self._timer)
+        wm.brignet_current_progress = 0.0
         rignetconnect.clear()
 
     def modal(self, context, event):
@@ -153,7 +167,7 @@ class BrigNetPredict(bpy.types.Operator):
             self._pred_skeleton = rignetconnect.predict_hierarchy(self._pred_data, self._networks, self._mesh_storage)
         elif self.current_step == PredictSteps.Predicting_Weights:
             self._pred_rig = rignetconnect.predict_weights(self._pred_data, self._pred_skeleton,
-                                                        self._networks.skin_net, self._mesh_storage)
+                                                           self._networks.skin_net, self._mesh_storage)
         elif self.current_step == PredictSteps.Creating_Armature:
             rignetconnect.create_armature(wm.brignet_targetmesh, self._pred_rig)
         elif self.current_step == PredictSteps.Finished:
@@ -168,6 +182,7 @@ class BrigNetPredict(bpy.types.Operator):
         # Advance current state
         try:
             self.current_step = PredictSteps(self.current_step.value + 1)
+            wm.brignet_current_progress = self.current_step.value
         except ValueError:
             self.clean_up(context)
             return {'FINISHED'}
@@ -175,6 +190,7 @@ class BrigNetPredict(bpy.types.Operator):
         return {'INTERFACE'}
 
     def invoke(self, context, event):
+        # we import the rignet module here to prevent import errors before the dependencies are installed
         global rignetconnect
         from . import rignetconnect
 
@@ -184,8 +200,6 @@ class BrigNetPredict(bpy.types.Operator):
         self.threshold = wm.brignet_threshold/1000
         self.current_step = PredictSteps(0)
 
-        args = (self, context)
-        self._handle = bpy.types.SpaceView3D.draw_handler_add(draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
         # timer event makes sure that the modal script is executed even without user interaction
         self._timer = wm.event_timer_add(0.1, window=context.window)
         wm.modal_handler_add(self)
@@ -236,14 +250,22 @@ class BrignetPanel(bpy.types.Panel):
                 row = layout.row()
                 row.label(text='face count: {0}'.format(decimate_mod.face_count))
 
-        row = layout.row()
-        row.operator('object.brignet_predict')
+        if wm.brignet_current_progress > 0.1:
+            layout.separator()
+            row = layout.row()
+            current_step = PredictSteps(int(wm.brignet_current_progress))
+            row.label(text=current_step.nice_name, icon=current_step.icon)
+            row = layout.row()
+            row.prop(wm, 'brignet_current_progress', slider=True)
+        else:
+            row = layout.row()
+            row.operator('object.brignet_predict')
 
-        row = layout.row()
-        row.prop(wm, 'brignet_density', text='Density')
+            row = layout.row()
+            row.prop(wm, 'brignet_density', text='Density')
 
-        row = layout.row()
-        row.prop(wm, 'brignet_threshold', text='Treshold')
+            row = layout.row()
+            row.prop(wm, 'brignet_threshold', text='Treshold')
 
 
 def register_properties():
@@ -272,6 +294,12 @@ def register_properties():
                                                                description='Path to Skeleton File',
                                                                subtype='FILE_PATH')
 
+    bpy.types.WindowManager.brignet_current_progress = FloatProperty(name="Progress", default=0.0,
+                                                                     description='Progress of ongoing rig',
+                                                                     min=0.0, max=PredictSteps.last().value,
+                                                                     options={'HIDDEN', 'SKIP_SAVE'}
+                                                                     )
+
 
 def unregister_properties():
     del bpy.types.WindowManager.brignet_targetmesh
@@ -280,3 +308,4 @@ def unregister_properties():
     del bpy.types.WindowManager.brignet_threshold
     del bpy.types.WindowManager.brignet_obj_path
     del bpy.types.WindowManager.brignet_skel_path
+    del bpy.types.WindowManager.brignet_current_progress
