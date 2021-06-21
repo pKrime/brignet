@@ -1,10 +1,10 @@
 from enum import Enum
 
-import blf
 import bpy
 from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
 
 from .ob_utils import objects
+from .postgen_utils import namefix
 
 try:
     from . import rignetconnect
@@ -84,7 +84,8 @@ class PredictSteps(Enum):
     Predicting_Hierarchy = 4
     Predicting_Weights = 5
     Creating_Armature = 6
-    Finished = 7
+    Post_Generation = 7
+    Finished = 8
 
     @staticmethod
     def last():
@@ -128,6 +129,7 @@ class BrigNetPredict(bpy.types.Operator):
     _pred_data = None
     _pred_skeleton = None
     _pred_rig = None
+    _armature = None
 
     @classmethod
     def poll(cls, context):
@@ -169,7 +171,11 @@ class BrigNetPredict(bpy.types.Operator):
             self._pred_rig = rignetconnect.predict_weights(self._pred_data, self._pred_skeleton,
                                                            self._networks.skin_net, self._mesh_storage)
         elif self.current_step == PredictSteps.Creating_Armature:
-            rignetconnect.create_armature(wm.brignet_targetmesh, self._pred_rig)
+            self._armature = rignetconnect.create_armature(wm.brignet_targetmesh, self._pred_rig)
+        elif self.current_step == PredictSteps.Post_Generation and self._armature:
+            if wm.brignet_mirror_names:
+                renamer = namefix.NameFix(self._armature)
+                renamer.name_left_right()
         elif self.current_step == PredictSteps.Finished:
             self.clean_up(context)
 
@@ -267,6 +273,9 @@ class BrignetPanel(bpy.types.Panel):
             row = layout.row()
             row.prop(wm, 'brignet_threshold', text='Treshold')
 
+            row = layout.row()
+            row.prop(wm, 'brignet_mirror_names')
+
 
 def register_properties():
     bpy.types.WindowManager.brignet_targetmesh = PointerProperty(type=bpy.types.Object,
@@ -300,6 +309,9 @@ def register_properties():
                                                                      options={'HIDDEN', 'SKIP_SAVE'}
                                                                      )
 
+    bpy.types.WindowManager.brignet_mirror_names = BoolProperty(name='Mirror Bone Names', default=True,
+                                                                description='Apply .L/.R names to symmetric bones')
+
 
 def unregister_properties():
     del bpy.types.WindowManager.brignet_targetmesh
@@ -309,3 +321,4 @@ def unregister_properties():
     del bpy.types.WindowManager.brignet_obj_path
     del bpy.types.WindowManager.brignet_skel_path
     del bpy.types.WindowManager.brignet_current_progress
+    del bpy.types.WindowManager.brignet_mirror_names

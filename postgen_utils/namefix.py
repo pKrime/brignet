@@ -17,16 +17,22 @@ class NameFix:
         self.left_bones.clear()
 
         for bone in self.armature.data.bones:
-            if bone.name.endswith(('.R', '.L')):
+            if bone.name.endswith('.R'):
+                self.right_bones.append(bone.name)
+                continue
+            if bone.name.endswith('.L'):
+                self.left_bones.append(bone.name)
                 continue
             if abs(bone.head_local.x) < self.threshold:
                 if abs(bone.tail_local.x) < self.threshold:
                     self.mid_bones.append(bone.name)
                     continue
                 elif bone.tail_local.x < 0:
+                    # right bone with head at the middle
                     self.right_bones.append(bone.name)
                     continue
                 else:
+                    # left bone with hand at the middle
                     self.left_bones.append(bone.name)
                     continue
 
@@ -41,8 +47,6 @@ class NameFix:
             yield self.armature.data.bones[name]
 
     def name_left_right(self):
-        threshold = 0.01
-
         new_names = dict()
 
         for rbone in self.names_to_bones(self.right_bones):
@@ -57,7 +61,7 @@ class NameFix:
             for lbone in self.names_to_bones(self.left_bones):
                 match = True
                 for i in range(3):
-                    if abs(lbone.head_local[i] - left_loc[i]) > threshold:
+                    if abs(lbone.head_local[i] - left_loc[i]) > self.threshold:
                         match = False
                         break
                 if match:

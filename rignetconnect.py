@@ -607,8 +607,10 @@ def create_armature(mesh_obj, predicted_rig):
                   (0.0, 0, -1.0, 0.0),
                   (0.0, 1, 0, 0.0),
                   (0.0, 0.0, 0.0, 1.0)))
-    ArmatureGenerator(predicted_rig, mesh_obj).generate(matrix=mat)
+    new_arm = ArmatureGenerator(predicted_rig, mesh_obj).generate(matrix=mat)
     torch.cuda.empty_cache()
+
+    return new_arm
 
 
 def clear():

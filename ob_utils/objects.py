@@ -152,3 +152,5 @@ class ArmatureGenerator(object):
             arm_obj.matrix_world = self._mesh.matrix_world
             mod = self._mesh.modifiers.new('rignet', 'ARMATURE')
             mod.object = arm_obj
+
+        return arm_obj
