@@ -30,18 +30,22 @@ bl_info = {
 import bpy
 
 from . import brignet, preferences, loadskeleton
+from . import postgen_utils
+from .ui import menus
 
 from importlib import reload
 try:
     reload(brignet)
     reload(preferences)
     reload(loadskeleton)
+    reload(postgen_utils)
 except NameError:
     pass
 
 from .brignet import BrignetPanel, BrigNetPredict, BrignetRemesh, BrignetCollection
 from .preferences import BrignetPrefs, BrignetEnvironment
 from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
+from .postgen_utils import NamiFy
 
 
 # REGISTER #
@@ -53,6 +57,9 @@ def register():
     bpy.utils.register_class(BrignetCollection)
     bpy.utils.register_class(BrignetRemesh)
     bpy.utils.register_class(BrigNetPredict)
+
+    bpy.utils.register_class(NamiFy)
+
     bpy.utils.register_class(BrignetPanel)
     bpy.utils.register_class(LoadRignetSkeleton)
     bpy.utils.register_class(LoadSkeletonPanel)
@@ -61,6 +68,8 @@ def register():
     if not BrignetPrefs.add_module_paths():
         print("Modules path not found, please set in bRigNet preferences")
     BrignetPrefs.check_modules()
+
+    bpy.types.VIEW3D_MT_pose_context_menu.append(menus.pose_context_options)
 
 
 def unregister():
@@ -71,6 +80,7 @@ def unregister():
         # if we have failed to load rignetconnect, we have no device to clear
         pass
 
+    bpy.types.VIEW3D_MT_pose_context_menu.remove(menus.pose_context_options)
     BrignetPrefs.reset_module_paths()
 
     bpy.utils.unregister_class(BrignetPanel)
@@ -79,6 +89,7 @@ def unregister():
     bpy.utils.unregister_class(BrignetCollection)
     bpy.utils.unregister_class(BrignetRemesh)
     bpy.utils.unregister_class(BrigNetPredict)
+    bpy.utils.unregister_class(NamiFy)
     bpy.utils.unregister_class(LoadSkeletonPanel)
     bpy.utils.unregister_class(LoadRignetSkeleton)
     brignet.unregister_properties()

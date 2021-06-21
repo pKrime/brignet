@@ -1,5 +1,3 @@
-from mathutils import Vector
-
 
 class NameFix:
     def __init__(self, armature):
@@ -73,5 +71,3 @@ class NameFix:
         self.left_bones = [new_names.get(name, name) for name in self.left_bones]
         self.right_bones = [new_names.get(name, name) for name in self.right_bones]
 
-    def fix(self):
-        self.name_left_right()
