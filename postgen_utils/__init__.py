@@ -62,6 +62,7 @@ class SpineFix(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     factor: FloatProperty(name='Factor', min=0.0, max=1.0, default=1.0)
+    fwd_roll: FloatProperty(name='Roll', min=0.0, max=1.0, default=1.0)
     _central_tolerance = 0.01  # max dislocation for joint to be considered central
 
     @classmethod
@@ -97,6 +98,9 @@ class SpineFix(bpy.types.Operator):
         new_head = Vector((0.0, root_bone.head.y, new_z))
         root_bone.head = self.factor * new_head + (1 - self.factor) * root_bone.head
 
+        fwd = Vector((0.0, 1.0, 0.0))
+        root_bone.roll = self.fwd_roll * bone_utils.ebone_roll_to_vector(root_bone, fwd) + (1 - self.fwd_roll) * root_bone.roll
+
         for bone in hip_bones:
             bone.use_connect = False
             bone.head.z = root_bone.head.z
@@ -108,6 +112,7 @@ class SpineFix(bpy.types.Operator):
                 child.head = self.factor * new_head + (1 - self.factor) * child.head
                 child.tail.x = self.factor * 0.0 + (1 - self.factor) * child.tail.x
 
+            child.roll = self.fwd_roll * bone_utils.ebone_roll_to_vector(child, fwd) + (1 - self.fwd_roll) * child.roll
             child = self.get_central_child(child)
 
         bpy.ops.object.mode_set(mode='POSE')
