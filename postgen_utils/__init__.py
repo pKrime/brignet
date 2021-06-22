@@ -35,8 +35,8 @@ class LimbChain:
 
     def get_children(self):
         try:
-            child = self.root.children[0]
-        except IndexError:
+            child = next(c for c in self.root.children if self.object.data.bones[c.name].use_connect)
+        except (IndexError, StopIteration):
             return
 
         self.bones.append(child)
@@ -107,6 +107,7 @@ class SpineFix(bpy.types.Operator):
 
         child = self.get_central_child(root_bone)
         while child:
+            child.use_connect = True
             if child.length < 0.02:
                 new_head = Vector((0.0, child.head.y, child.head.z - child.parent.length/2))
                 child.head = self.factor * new_head + (1 - self.factor) * child.head
@@ -149,6 +150,8 @@ class NamiFy(bpy.types.Operator):
 
     def rename_def_bones(self, armature):
         for bone in armature.pose.bones:
+            if bone.name.startswith('DEF-'):
+                continue
             try:
                 rigify_type = bone.rigify_type
             except AttributeError:
@@ -167,8 +170,16 @@ class NamiFy(bpy.types.Operator):
             if rigify_type == 'limbs.super_limb':
                 if rigify_parameters.limb_type == 'arm':
                     root_name, mid_name, end_name = 'DEF-upper_arm', 'DEF-forearm', 'DEF-hand'
+                    parent_name = 'DEF-shoulder'
                 elif rigify_parameters.limb_type == 'leg':
                     root_name, mid_name, end_name = 'DEF-thigh', 'DEF-shin', 'DEF-foot'
+                    parent_name = 'DEF-pelvis'
+
+                if rename_mirrored:
+                    other_parent_name = bone.parent.name[:-2] + other_side
+                    other_parent = armature.pose.bones[other_parent_name]
+                    other_parent.name = parent_name + other_side
+                bone.parent.name = parent_name + side
 
                 basename = root_name
                 for cbone in chain.bones:
@@ -190,22 +201,10 @@ class NamiFy(bpy.types.Operator):
                             other_bone.name = basename + other_side
 
                     cbone.name = basename + side
-            elif rigify_type == 'spines.basic_spine':
+            elif rigify_type in ('spines.basic_spine', 'spines.super_spine'):
                 basename = 'DEF-spine'
                 for cbone in chain.bones:
                     cbone.name = basename
-            elif rigify_type == 'basic.super_copy':
-                try:
-                    child = bone.children[0]
-                except KeyError:
-                    continue
-                if child.rigify_type == 'limbs.super_limb':
-                    if child.rigify_parameters.limb_type == 'arm':
-                        basename = 'DEF-shoulder'
-                    elif child.rigify_parameters.limb_type == 'leg':
-                        basename = 'DEF-pelvis'
-                    else:
-                        continue
 
                 if rename_mirrored:
                     other_name = bone.name[:-2] + other_side

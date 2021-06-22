@@ -543,7 +543,7 @@ def ebone_roll_to_vector(bone, align_axis, axis_only=False):
 
 class NameFix:
     def __init__(self, armature):
-        self.threshold = 0.01
+        self.threshold = 0.03
         self.armature = armature
 
         self.right_bones = []
