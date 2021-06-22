@@ -216,10 +216,26 @@ class ExtractMetarig(bpy.types.Operator):
             thigh_bone.tail = thigh_bone.head + leg_direction
 
             if self.roll_knee_to_foot:
-                foot_direction = foot_bone.vector.normalized()
+                foot_direction = -foot_bone.vector.normalized()
                 thigh_bone.roll = bone_utils.ebone_roll_to_vector(thigh_bone, foot_direction)
                 shin_bone = armature.edit_bones[f'shin{side}']
                 shin_bone.roll = bone_utils.ebone_roll_to_vector(shin_bone, foot_direction)
+
+    def adjust_elbows(self, armature):
+        """Straighten knee joints"""
+        for side in '.R', '.L':
+            arm_bone = armature.edit_bones[f'upper_arm{side}']
+            forearm_bone = armature.edit_bones[f'forearm{side}']
+            hand_bone = armature.edit_bones[f'hand{side}']
+
+            arm_mid = forearm_bone.tail/2 - arm_bone.head/2
+            bow_dir = arm_bone.tail - arm_mid
+            bow_dir = bow_dir.cross(Vector((-1.0, 0.0, 0.0)))
+            bow_dir.normalize()
+
+            arm_bone.roll = bone_utils.ebone_roll_to_vector(arm_bone, bow_dir)
+            forearm_bone.roll = bone_utils.ebone_roll_to_vector(forearm_bone, bow_dir)
+            hand_bone.roll = bone_utils.ebone_roll_to_vector(hand_bone, bow_dir)
 
     def execute(self, context):
         src_object = context.object
@@ -291,6 +307,7 @@ class ExtractMetarig(bpy.types.Operator):
 
         self.adjust_toes(met_armature)
         self.adjust_knees(met_armature)
+        self.adjust_elbows(met_armature)
 
         right_leg = met_armature.edit_bones[met_skeleton.right_leg.leg]
         left_leg = met_armature.edit_bones[met_skeleton.left_leg.leg]
