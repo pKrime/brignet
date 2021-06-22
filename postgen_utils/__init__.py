@@ -188,6 +188,7 @@ class ExtractMetarig(bpy.types.Operator):
         return True
 
     def adjust_toes(self, armature):
+        """Align toe joint with foot"""
         for side in '.R', '.L':
             foot_bone = armature.edit_bones[f'foot{side}']
             vector = foot_bone.vector.normalized()
@@ -200,6 +201,16 @@ class ExtractMetarig(bpy.types.Operator):
             new_loc.z = toe_bone.tail.z
 
             toe_bone.tail = new_loc
+
+    def adjust_knees(self, armature):
+        """Straighten knee joints"""
+        for side in '.R', '.L':
+            thigh_bone = armature.edit_bones[f'thigh{side}']
+            foot_bone = armature.edit_bones[f'foot{side}']
+
+            leg_direction = (foot_bone.tail - thigh_bone.head).normalized()
+            leg_direction *= thigh_bone.length
+            thigh_bone.tail = thigh_bone.head + leg_direction
 
     def execute(self, context):
         src_object = context.object
@@ -270,6 +281,7 @@ class ExtractMetarig(bpy.types.Operator):
             match_meta_bone(met_skeleton.left_leg, src_skeleton.left_leg, bone_attr)
 
         self.adjust_toes(met_armature)
+        self.adjust_knees(met_armature)
 
         right_leg = met_armature.edit_bones[met_skeleton.right_leg.leg]
         left_leg = met_armature.edit_bones[met_skeleton.left_leg.leg]
