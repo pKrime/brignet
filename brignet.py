@@ -47,6 +47,10 @@ class BrignetRemesh(bpy.types.Operator):
         collection_name = wm.brignet_highrescollection.name
         view_layer = bpy.context.view_layer.layer_collection.children.get(collection_name)
         view_layer.hide_viewport = True
+
+        for ob in bpy.data.collections[collection_name].all_objects:
+            ob.hide_set(True)
+
         return {'FINISHED'}
 
 
@@ -183,6 +187,9 @@ class BrigNetPredict(bpy.types.Operator):
                 wm.brignet_highrescollection.hide_viewport = False
                 objects.copy_weights(wm.brignet_highrescollection.objects, wm.brignet_targetmesh)
 
+                for ob in wm.brignet_highrescollection.all_objects:
+                    ob.hide_set(False)
+
             return {'FINISHED'}
 
         # Advance current state
@@ -249,12 +256,21 @@ class BrignetPanel(bpy.types.Panel):
             decimate_mod = next((mod for mod in wm.brignet_targetmesh.modifiers if mod.type == 'DECIMATE'), None)
             if remesh_mod:
                 row = layout.row()
-                row.prop(remesh_mod, 'voxel_size')
+                row.prop(remesh_mod, 'voxel_size', slider=True)
             if decimate_mod:
                 row = layout.row()
-                row.prop(decimate_mod, 'ratio')
+                row.prop(decimate_mod, 'ratio', slider=True)
                 row = layout.row()
-                row.label(text='face count: {0}'.format(decimate_mod.face_count))
+                row.label(text='Face count: {0}'.format(decimate_mod.face_count))
+
+                max_face_count = 5000
+                if decimate_mod.face_count > max_face_count:
+                    row = layout.row()
+                    row.label(text=f'Face count too high (exceeds {max_face_count})', icon='ERROR')
+                min_face_count = 1000
+                if decimate_mod.face_count < min_face_count:
+                    row = layout.row()
+                    row.label(text=f'Face count too low (less than {min_face_count})', icon='ERROR')
 
         if wm.brignet_current_progress > 0.1:
             layout.separator()
