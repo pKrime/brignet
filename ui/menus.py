@@ -1,5 +1,6 @@
 from ..postgen_utils import NamiFy
 from ..postgen_utils import ExtractMetarig
+from ..postgen_utils import SpineFix
 
 
 def menu_header(layout):
@@ -19,3 +20,6 @@ def pose_context_options(self, context):
 
     row = layout.row()
     row.operator(ExtractMetarig.bl_idname)
+
+    row = layout.row()
+    row.operator(SpineFix.bl_idname)

@@ -4,7 +4,7 @@ import bpy
 from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
 
 from .ob_utils import objects
-from .postgen_utils import namefix
+from .postgen_utils.bone_utils import NameFix
 
 try:
     from . import rignetconnect
@@ -184,7 +184,7 @@ class BrigNetPredict(bpy.types.Operator):
             self._armature = rignetconnect.create_armature(wm.brignet_targetmesh, self._pred_rig)
         elif self.current_step == PredictSteps.Post_Generation and self._armature:
             if wm.brignet_mirror_names:
-                renamer = namefix.NameFix(self._armature)
+                renamer = NameFix(self._armature)
                 renamer.name_left_right()
         elif self.current_step == PredictSteps.Finished:
             self.clean_up(context)

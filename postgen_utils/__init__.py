@@ -53,6 +53,67 @@ class LimbChain:
         return child
 
 
+class SpineFix(bpy.types.Operator):
+    """Rename deformation bones as generated via rigify. Rigify should be enabled"""
+
+    bl_idname = "object.brignet_spinefix"
+    bl_label = "Fix Spine"
+    bl_description = "Extend collapsed spine joints"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    factor: FloatProperty(name='Factor', min=0.0, max=1.0, default=1.0)
+    _central_tolerance = 0.01  # max dislocation for joint to be considered central
+
+    @classmethod
+    def poll(cls, context):
+        if context.object.type != 'ARMATURE':
+            return False
+        if 'root' not in context.object.data.bones:
+            return False
+
+        return True
+
+    def get_central_child(self, ebone):
+        try:
+            child = next(c for c in ebone.children if abs(c.tail.x) < self._central_tolerance)
+        except StopIteration:
+            return
+
+        return child
+
+    def execute(self, context):
+        armature = context.active_object.data
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        root_bone = armature.edit_bones['root']
+        hip_bones = [c for c in root_bone.children if abs(c.tail.x) > self._central_tolerance]
+
+        if not hip_bones:
+            return {'FINISHED'}
+
+        diff = root_bone.head.z - hip_bones[0].tail.z
+        new_z = hip_bones[0].tail.z - diff/2
+
+        new_head = Vector((0.0, root_bone.head.y, new_z))
+        root_bone.head = self.factor * new_head + (1 - self.factor) * root_bone.head
+
+        for bone in hip_bones:
+            bone.use_connect = False
+            bone.head.z = root_bone.head.z
+
+        child = self.get_central_child(root_bone)
+        while child:
+            if child.length < 0.02:
+                new_head = Vector((0.0, child.head.y, child.head.z - child.parent.length/2))
+                child.head = self.factor * new_head + (1 - self.factor) * child.head
+                child.tail.x = self.factor * 0.0 + (1 - self.factor) * child.tail.x
+
+            child = self.get_central_child(child)
+
+        bpy.ops.object.mode_set(mode='POSE')
+        return {'FINISHED'}
+
+
 class NamiFy(bpy.types.Operator):
     """Rename deformation bones as generated via rigify. Rigify should be enabled"""
 
@@ -275,23 +336,6 @@ class ExtractMetarig(bpy.types.Operator):
 
             met_bone.head = src_bone.head_local
             met_bone.tail = src_bone.tail_local
-
-            if met_bone.parent and met_bone.use_connect:
-                bone_dir = met_bone.vector.normalized()
-                parent_dir = met_bone.parent.vector.normalized()
-
-                if bone_dir.dot(parent_dir) < -0.6:
-                    print(met_bone.name, "non aligned")
-                    # TODO
-
-            # TODO: set roll
-            # met_bone.roll = 0.0
-            #
-            # src_z_axis = Vector((0.0, 0.0, 1.0)) @ src_bone.matrix_local.to_3x3()
-            # inv_rot = met_bone.matrix.to_3x3().inverted()
-            # trg_z_axis = src_z_axis @ inv_rot
-            # dot_z = (met_bone.z_axis @ met_bone.matrix.inverted()).dot(trg_z_axis)
-            # met_bone.roll = dot_z * pi
 
         src_skeleton = bone_mapping.RigifySkeleton()
         for bone_attr in ['hips', 'spine', 'spine1', 'spine2', 'neck', 'head']:

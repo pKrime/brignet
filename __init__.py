@@ -45,7 +45,7 @@ except NameError:
 from .brignet import BrignetPanel, BrigNetPredict, BrignetRemesh, BrignetCollection
 from .preferences import BrignetPrefs, BrignetEnvironment
 from .loadskeleton import LoadRignetSkeleton, LoadSkeletonPanel
-from .postgen_utils import NamiFy, ExtractMetarig
+from .postgen_utils import NamiFy, ExtractMetarig, SpineFix
 
 
 # REGISTER #
@@ -60,6 +60,7 @@ def register():
 
     bpy.utils.register_class(NamiFy)
     bpy.utils.register_class(ExtractMetarig)
+    bpy.utils.register_class(SpineFix)
 
     bpy.utils.register_class(BrignetPanel)
     bpy.utils.register_class(LoadRignetSkeleton)
@@ -92,6 +93,7 @@ def unregister():
     bpy.utils.unregister_class(BrigNetPredict)
     bpy.utils.unregister_class(NamiFy)
     bpy.utils.unregister_class(ExtractMetarig)
+    bpy.utils.unregister_class(SpineFix)
     bpy.utils.unregister_class(LoadSkeletonPanel)
     bpy.utils.unregister_class(LoadRignetSkeleton)
     brignet.unregister_properties()
