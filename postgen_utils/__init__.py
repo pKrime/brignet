@@ -165,7 +165,6 @@ class ExtractMetarig(bpy.types.Operator):
     bl_description = "Create Metarig from current object"
     bl_options = {'REGISTER', 'UNDO'}
 
-
     offset_knee: FloatProperty(name='Offset Knee',
                                default=0.0)
 
@@ -175,6 +174,10 @@ class ExtractMetarig(bpy.types.Operator):
     assign_metarig: BoolProperty(name='Assign metarig',
                                  default=True,
                                  description='Rigify will generate to the active object')
+
+    roll_knee_to_foot: BoolProperty(name='Roll knees to foot',
+                                    default=True,
+                                    description='Align knee roll with foot direction')
 
     @classmethod
     def poll(cls, context):
@@ -211,6 +214,12 @@ class ExtractMetarig(bpy.types.Operator):
             leg_direction = (foot_bone.tail - thigh_bone.head).normalized()
             leg_direction *= thigh_bone.length
             thigh_bone.tail = thigh_bone.head + leg_direction
+
+            if self.roll_knee_to_foot:
+                foot_direction = foot_bone.vector.normalized()
+                thigh_bone.roll = bone_utils.ebone_roll_to_vector(thigh_bone, foot_direction)
+                shin_bone = armature.edit_bones[f'shin{side}']
+                shin_bone.roll = bone_utils.ebone_roll_to_vector(shin_bone, foot_direction)
 
     def execute(self, context):
         src_object = context.object
@@ -296,30 +305,6 @@ class ExtractMetarig(bpy.types.Operator):
 
         for bone in right_knee, left_knee:
             bone.head += offset
-
-            # TODO: roll
-            # for met_bone_name, src_bone_name in zip(met_bone_names, src_bone_names):
-            #     met_bone = met_armature.edit_bones[met_bone_name]
-            #     try:
-            #         src_bone = src_armature.bones[src_bone_name]
-            #     except KeyError:
-            #         print("source bone not found", src_bone_name)
-            #         continue
-
-                # met_bone.head = src_bone.head_local
-                # try:
-                #     met_bone.tail = src_bone.children[0].head_local
-                # except IndexError:
-                #     align_to_closer_axis(src_bone, met_bone)
-                #
-                # met_bone.roll = 0.0
-                #
-                # src_z_axis = Vector((0.0, 0.0, 1.0)) @ src_bone.matrix_local.to_3x3()
-                # inv_rot = met_bone.matrix.to_3x3().inverted()
-                # trg_z_axis = src_z_axis @ inv_rot
-                # dot_z = (met_bone.z_axis @ met_bone.matrix.inverted()).dot(trg_z_axis)
-                # met_bone.roll = dot_z * pi
-
 
         met_armature.edit_bones['spine.003'].tail = met_armature.edit_bones['spine.004'].head
         met_armature.edit_bones['spine.005'].head = (met_armature.edit_bones['spine.004'].head + met_armature.edit_bones['spine.006'].head) / 2

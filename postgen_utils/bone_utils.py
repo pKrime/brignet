@@ -1,5 +1,8 @@
 import bpy
+from mathutils import Matrix
 from mathutils import Vector
+from mathutils import Quaternion
+from math import pi
 
 
 def copy_bone_constraints(bone_a, bone_b):
@@ -452,3 +455,87 @@ def get_group_verts(obj, vertex_group, threshold=0.1):
         weighted_verts.append(i)
 
     return weighted_verts
+
+
+def vec_roll_to_mat3_normalized(nor, roll):
+    THETA_SAFE = 1.0e-5  # theta above this value are always safe to use
+    THETA_CRITICAL = 1.0e-9  # above this is safe under certain conditions
+
+    assert nor.magnitude - 1.0 < 0.01
+
+    x = nor.x
+    y = nor.y
+    z = nor.z
+
+    theta = 1.0 + y
+    theta_alt = x * x + z * z
+
+    # When theta is close to zero (nor is aligned close to negative Y Axis),
+    # we have to check we do have non-null X/Z components as well.
+    # Also, due to float precision errors, nor can be (0.0, -0.99999994, 0.0) which results
+    # in theta being close to zero. This will cause problems when theta is used as divisor.
+
+    bMatrix = Matrix().to_3x3()
+
+    if theta > THETA_SAFE or ((x | z) and theta > THETA_CRITICAL):
+        # nor is *not* aligned to negative Y-axis (0,-1,0).
+        # We got these values for free... so be happy with it... ;)
+
+        bMatrix[0][1] = -x
+        bMatrix[1][0] = x
+        bMatrix[1][1] = y
+        bMatrix[1][2] = z
+        bMatrix[2][1] = -z
+
+        if theta > THETA_SAFE:
+            # nor differs significantly from negative Y axis (0,-1,0): apply the general case. */
+            bMatrix[0][0] = 1 - x * x / theta
+            bMatrix[2][2] = 1 - z * z / theta
+            bMatrix[2][0] = bMatrix[0][2] = -x * z / theta
+        else:
+            # nor is close to negative Y axis (0,-1,0): apply the special case. */
+            bMatrix[0][0] = (x + z) * (x - z) / -theta_alt
+            bMatrix[2][2] = -bMatrix[0][0]
+            bMatrix[2][0] = bMatrix[0][2] = 2.0 * x * z / theta_alt
+    else:
+        # nor is very close to negative Y axis (0,-1,0): use simple symmetry by Z axis. */
+        bMatrix.identity()
+        bMatrix[0][0] = bMatrix[1][1] = -1.0
+
+    # Make Roll matrix */
+    quat = Quaternion(nor, roll)
+    rMatrix = quat.to_matrix()
+
+    # Combine and output result */
+    return rMatrix @ bMatrix
+
+
+def ebone_roll_to_vector(bone, align_axis, axis_only=False):
+    roll = 0.0
+
+    assert abs(align_axis.magnitude - 1.0) < 1.0e-5
+    nor = bone.tail - bone.head
+    nor.normalize()
+
+    d = nor.dot(align_axis)
+    if d == 1.0:
+        return roll
+
+    mat = vec_roll_to_mat3_normalized(nor, 0.0)
+
+    # project the new_up_axis along the normal */
+    vec = align_axis.project(nor)
+    align_axis_proj = align_axis - vec
+
+    if axis_only:
+        if align_axis_proj.angle(mat[2]) > pi / 2:
+            align_axis_proj.negate()
+
+    roll = align_axis_proj.angle(mat[2])
+
+    vec = mat[2].cross(align_axis_proj)
+
+    if vec.dot(nor) < 0.0:
+        return -roll
+
+    return roll
