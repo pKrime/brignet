@@ -187,6 +187,20 @@ class ExtractMetarig(bpy.types.Operator):
 
         return True
 
+    def adjust_toes(self, armature):
+        for side in '.R', '.L':
+            foot_bone = armature.edit_bones[f'foot{side}']
+            vector = foot_bone.vector.normalized()
+
+            toe_bone = armature.edit_bones[f'toe{side}']
+            dist = (toe_bone.tail - foot_bone.head).length
+
+            vector *= dist
+            new_loc = vector + foot_bone.head
+            new_loc.z = toe_bone.tail.z
+
+            toe_bone.tail = new_loc
+
     def execute(self, context):
         src_object = context.object
         src_armature = context.object.data
@@ -251,9 +265,11 @@ class ExtractMetarig(bpy.types.Operator):
             match_meta_bone(met_skeleton.right_arm, src_skeleton.right_arm, bone_attr)
             match_meta_bone(met_skeleton.left_arm, src_skeleton.left_arm, bone_attr)
 
-        for bone_attr in ['upleg', 'leg', 'foot', 'toe']:
+        for bone_attr in ['upleg', 'leg', 'foot']:
             match_meta_bone(met_skeleton.right_leg, src_skeleton.right_leg, bone_attr)
             match_meta_bone(met_skeleton.left_leg, src_skeleton.left_leg, bone_attr)
+
+        self.adjust_toes(met_armature)
 
         right_leg = met_armature.edit_bones[met_skeleton.right_leg.leg]
         left_leg = met_armature.edit_bones[met_skeleton.left_leg.leg]
@@ -351,7 +367,6 @@ class ExtractMetarig(bpy.types.Operator):
                 breast_bone.head.z = spine_bone.head.z
                 #
                 breast_bone.tail.x = breast_bone.head.x
-                breast_bone.tail.y = breast_bone.head.y + 0.25
                 breast_bone.tail.z = breast_bone.head.z
 
         bpy.ops.object.mode_set(mode='POSE')
