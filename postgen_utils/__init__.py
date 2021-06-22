@@ -305,6 +305,11 @@ class ExtractMetarig(bpy.types.Operator):
                 shin_bone = armature.edit_bones[f'shin{side}']
                 shin_bone.roll = bone_utils.ebone_roll_to_vector(shin_bone, foot_direction)
 
+                up_axis = Vector((0.0, 0.0, 1.0))
+                foot_bone.roll = bone_utils.ebone_roll_to_vector(foot_bone, -up_axis)
+                if foot_bone.children:
+                    foot_bone.children[0].roll = bone_utils.ebone_roll_to_vector(foot_bone, up_axis)
+
     def adjust_elbows(self, armature):
         """Straighten knee joints"""
         for side in '.R', '.L':
