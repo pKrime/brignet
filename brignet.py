@@ -115,7 +115,12 @@ class PredictSteps(Enum):
 
     @property
     def nice_name(self):
-        return self.name.replace('_', ' ')
+        nice_name = self.name.replace('_', ' ')
+
+        if self.value == self.Creating_Data.value:
+            nice_name += " (takes a while...)"
+
+        return nice_name
 
 
 class BrigNetPredict(bpy.types.Operator):
@@ -162,6 +167,7 @@ class BrigNetPredict(bpy.types.Operator):
             return {'CANCELLED'}
 
         wm = context.window_manager
+        wm.brignet_targetmesh.hide_set(False)  # hidden target mesh might cause crashes
         if self.current_step == PredictSteps.Loading_Networks:
             self._networks = rignetconnect.Networks()
         elif self.current_step == PredictSteps.Creating_Data:
@@ -189,6 +195,7 @@ class BrigNetPredict(bpy.types.Operator):
 
                 for ob in wm.brignet_highrescollection.all_objects:
                     ob.hide_set(False)
+                wm.brignet_targetmesh.hide_set(True)
 
             return {'FINISHED'}
 
