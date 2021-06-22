@@ -51,7 +51,7 @@ class LimbChain:
                 self.bones.append(child)
                 self.length += child.length
 
-                if self.direction_change_stop and child.parent.vector.normalized().dot(child.vector.normalized()) < 0.5:
+                if self.direction_change_stop and child.parent.vector.normalized().dot(child.vector.normalized()) < 0.6:
                     break
 
 
