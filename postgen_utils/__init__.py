@@ -10,10 +10,11 @@ from . import bone_mapping
 
 
 class LimbChain:
-    def __init__(self, chain_root, object):
+    def __init__(self, chain_root, object, direction_change_stop=False):
         self.object = object
         self.length = chain_root.length
         self.bones = [chain_root]
+        self.direction_change_stop = direction_change_stop
 
         self.get_children()
 
@@ -50,7 +51,8 @@ class LimbChain:
                 self.bones.append(child)
                 self.length += child.length
 
-        return child
+                if self.direction_change_stop and child.parent.vector.normalized().dot(child.vector.normalized()) < 0.5:
+                    break
 
 
 class SpineFix(bpy.types.Operator):
@@ -172,6 +174,7 @@ class NamiFy(bpy.types.Operator):
                     root_name, mid_name, end_name = 'DEF-upper_arm', 'DEF-forearm', 'DEF-hand'
                     parent_name = 'DEF-shoulder'
                 elif rigify_parameters.limb_type == 'leg':
+                    chain = LimbChain(bone, armature, direction_change_stop=True)
                     root_name, mid_name, end_name = 'DEF-thigh', 'DEF-shin', 'DEF-foot'
                     parent_name = 'DEF-pelvis'
 
@@ -201,6 +204,24 @@ class NamiFy(bpy.types.Operator):
                             other_bone.name = basename + other_side
 
                     cbone.name = basename + side
+
+                try:
+                    cbone = cbone.children[0]
+                except IndexError:
+                    pass
+                else:
+                    basename = 'DEF-toe'
+                    if rename_mirrored:
+                        other_name = cbone.name[:-2] + other_side
+                        try:
+                            other_bone = armature.pose.bones[other_name]
+                        except KeyError:
+                            pass
+                        else:
+                            other_bone.name = basename + other_side
+
+                    cbone.name = basename + side
+
             elif rigify_type in ('spines.basic_spine', 'spines.super_spine'):
                 basename = 'DEF-spine'
                 for cbone in chain.bones:
@@ -230,11 +251,9 @@ class ExtractMetarig(bpy.types.Operator):
     bl_description = "Create Metarig from current object"
     bl_options = {'REGISTER', 'UNDO'}
 
-    offset_knee: FloatProperty(name='Offset Knee',
-                               default=0.0)
-
-    offset_elbow: FloatProperty(name='Offset Elbow',
-                                default=0.0)
+    remove_missing: BoolProperty(name='Remove Unmatched Bones',
+                                 default=True,
+                                 description='Rigify will generate to the active object')
 
     assign_metarig: BoolProperty(name='Assign metarig',
                                  default=True,
@@ -335,7 +354,9 @@ class ExtractMetarig(bpy.types.Operator):
             src_bone = src_armature.bones.get(getattr(src_bone_group, bone_attr), None)
 
             if not src_bone:
-                print(bone_attr, "not found in", src_armature)
+                print(getattr(src_bone_group, bone_attr, None), "not found in", src_armature)
+                if self.remove_missing:
+                    met_armature.edit_bones.remove(met_bone)
                 return
 
             met_bone.head = src_bone.head_local
@@ -345,34 +366,21 @@ class ExtractMetarig(bpy.types.Operator):
         for bone_attr in ['hips', 'spine', 'spine1', 'spine2', 'neck', 'head']:
             match_meta_bone(met_skeleton.spine, src_skeleton.spine, bone_attr)
 
+        if self.remove_missing and 'DEF-spine.005' not in src_armature.edit_bones:
+            # TODO: should rather check all DEF-bones at once
+            met_armature.edit_bones.remove(met_armature.edit_bones['spine.005'])
+
         for bone_attr in ['shoulder', 'arm', 'forearm', 'hand']:
             match_meta_bone(met_skeleton.right_arm, src_skeleton.right_arm, bone_attr)
             match_meta_bone(met_skeleton.left_arm, src_skeleton.left_arm, bone_attr)
 
-        for bone_attr in ['upleg', 'leg', 'foot']:
+        for bone_attr in ['upleg', 'leg', 'foot', 'toe']:
             match_meta_bone(met_skeleton.right_leg, src_skeleton.right_leg, bone_attr)
             match_meta_bone(met_skeleton.left_leg, src_skeleton.left_leg, bone_attr)
 
         self.adjust_toes(met_armature)
         self.adjust_knees(met_armature)
         self.adjust_elbows(met_armature)
-
-        right_leg = met_armature.edit_bones[met_skeleton.right_leg.leg]
-        left_leg = met_armature.edit_bones[met_skeleton.left_leg.leg]
-
-        offset = Vector((0.0, self.offset_knee, 0.0))
-        for bone in right_leg, left_leg:
-            bone.head += offset
-
-        right_knee = met_armature.edit_bones[met_skeleton.right_arm.forearm]
-        left_knee = met_armature.edit_bones[met_skeleton.left_arm.forearm]
-        offset = Vector((0.0, self.offset_elbow, 0.0))
-
-        for bone in right_knee, left_knee:
-            bone.head += offset
-
-        met_armature.edit_bones['spine.003'].tail = met_armature.edit_bones['spine.004'].head
-        met_armature.edit_bones['spine.005'].head = (met_armature.edit_bones['spine.004'].head + met_armature.edit_bones['spine.006'].head) / 2
 
         # find foot vertices
         foot_verts = {}
