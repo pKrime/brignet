@@ -98,7 +98,7 @@ class SpineFix(bpy.types.Operator):
         new_head = Vector((0.0, root_bone.head.y, new_z))
         root_bone.head = self.factor * new_head + (1 - self.factor) * root_bone.head
 
-        fwd = Vector((0.0, 1.0, 0.0))
+        fwd = Vector((0.0, -1.0, 0.0))
         root_bone.roll = self.fwd_roll * bone_utils.ebone_roll_to_vector(root_bone, fwd) + (1 - self.fwd_roll) * root_bone.roll
 
         for bone in hip_bones:
