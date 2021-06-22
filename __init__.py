@@ -17,12 +17,12 @@
 
 
 bl_info = {
-    "name": "bRigNet",
-    "version": (0, 0, 1),
+    "name": "Neural Rig",
+    "version": (0, 1, 0),
     "author": "Paolo Acampora",
     "blender": (2, 90, 0),
     "description": "Armature and Weights prediction using RigNet",
-    "location": "Armature properties",
+    "location": "3D Viewport",
     "doc_url": "https://github.com/pKrime/brignet",
     "category": "Rigging",
 }

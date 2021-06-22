@@ -8,7 +8,7 @@ def menu_header(layout):
     row.separator()
 
     row = layout.row()
-    row.label(text="Brignet Utils")
+    row.label(text="Neural Rig Utils")
 
 
 def pose_context_options(self, context):
@@ -16,10 +16,10 @@ def pose_context_options(self, context):
     menu_header(layout)
 
     row = layout.row()
+    row.operator(SpineFix.bl_idname)
+
+    row = layout.row()
     row.operator(NamiFy.bl_idname)
 
     row = layout.row()
     row.operator(ExtractMetarig.bl_idname)
-
-    row = layout.row()
-    row.operator(SpineFix.bl_idname)
