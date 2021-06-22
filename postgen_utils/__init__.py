@@ -128,7 +128,7 @@ class NamiFy(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     rename_mirrored: BoolProperty(name='Rename mirrored bones', default=True,
-                               description='Rename mirrored bones if found')
+                                  description='Rename mirrored bones if found')
 
     @classmethod
     def poll(cls, context):
