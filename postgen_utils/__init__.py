@@ -64,6 +64,7 @@ class MergeBones(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     _armature = None
+    mirror: BoolProperty(name="Mirror", description="merge bones from the other side too", default=True)
     remove_merged: BoolProperty(name="Remove Merged", description="Remove merged groups", default=True)
 
     @classmethod
@@ -75,8 +76,14 @@ class MergeBones(bpy.types.Operator):
         # for now we limit the merge to just two bones
         return len(context.selected_pose_bones) == 2
 
-    def merge_bones(self, bone_name, target_name):
+    def merge_bones(self, ebone, target_bone):
         """Merge selected bones and their vertex weights"""
+        target_bone.tail = ebone.tail
+
+        for child in ebone.children:
+            child.parent = target_bone
+
+        self._armature.data.edit_bones.remove(ebone)
 
     def execute(self, context):
         self._armature = context.active_object
@@ -84,20 +91,45 @@ class MergeBones(bpy.types.Operator):
         bone_names = [b.name for b in context.selected_pose_bones if b != context.active_pose_bone]
         target_name = context.active_pose_bone.name
 
+        other_target_name = ''
+        other_side = ''
+
+        if self.mirror:
+            # TODO: duplicate names like .L.001
+            if target_name.endswith('.L'):
+                other_side = '.R'
+            elif target_name.endswith('.R'):
+                other_side = '.L'
+            if other_side:
+                other_target_name = target_name[:-2] + other_side
+
         for ob in bone_utils.iterate_rigged_obs(self._armature):
             for name in bone_names:
                 bone_utils.merge_vertex_groups(ob, target_name, name, remove_merged=self.remove_merged)
+                if other_target_name and name.endswith(('.L', '.R')):
+                    bone_utils.merge_vertex_groups(ob, other_target_name, f'{name[:-2]}{other_side}', remove_merged=self.remove_merged)
 
         bpy.ops.object.mode_set(mode='EDIT')
         target_bone = self._armature.data.edit_bones[target_name]
+        other_target_bone = None
+        if other_target_name:
+            try:
+                other_target_bone = self._armature.data.edit_bones[other_target_name]
+            except KeyError:
+                pass
+
         for name in bone_names:
             ebone = self._armature.data.edit_bones[name]
-            target_bone.tail = ebone.tail
+            self.merge_bones(ebone, target_bone)
 
-            for child in ebone.children:
-                child.parent = target_bone
+            if other_target_bone:
+                try:
+                    ebone = self._armature.data.edit_bones[name[:-2] + other_side]
+                except KeyError:
+                    pass
+                else:
+                    self.merge_bones(ebone, other_target_bone)
 
-            self._armature.data.edit_bones.remove(ebone)
         bpy.ops.object.mode_set(mode='POSE')
 
         return {'FINISHED'}
@@ -442,7 +474,7 @@ class ExtractMetarig(bpy.types.Operator):
         for ob in bone_utils.iterate_rigged_obs(src_object):
             if src_skeleton.left_leg.foot not in ob.vertex_groups:
                 continue
-            grouped_verts = bone_utils.get_group_verts(ob, src_skeleton.left_leg.foot, threshold=0.8)
+            grouped_verts = [gv for gv, _ in bone_utils.get_group_verts_weight(ob, src_skeleton.left_leg.foot, threshold=0.8)]
             if len(grouped_verts) > len(foot_verts):
                 foot_verts = grouped_verts
                 foot_ob = ob
