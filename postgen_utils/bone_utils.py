@@ -439,9 +439,9 @@ def iterate_rigged_obs(armature_object):
                 break
 
 
-def get_group_verts(obj, vertex_group, threshold=0.1):
+def get_group_verts_weight(obj, vertex_group, threshold=0.1):
+    """Iterate vertex index and weight assigned to given vertex_group"""
     group_idx = obj.vertex_groups[vertex_group].index
-    weighted_verts = []
 
     for i, v in enumerate(obj.data.vertices):
         try:
@@ -452,9 +452,17 @@ def get_group_verts(obj, vertex_group, threshold=0.1):
         if g.weight < threshold:
             continue
 
-        weighted_verts.append(i)
+        yield i, g.weight
 
-    return weighted_verts
+
+def merge_vertex_groups(obj, v_grp_a, v_grp_b, remove_merged=True):
+    group_a = obj.vertex_groups[v_grp_a]
+
+    for idx, weight in get_group_verts_weight(obj, v_grp_b):
+        group_a.add([idx], weight, 'REPLACE')
+
+    if remove_merged:
+        obj.vertex_groups.remove(obj.vertex_groups[v_grp_b])
 
 
 def vec_roll_to_mat3_normalized(nor, roll):

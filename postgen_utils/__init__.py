@@ -55,6 +55,54 @@ class LimbChain:
                     break
 
 
+class MergeBones(bpy.types.Operator):
+    """Merge two deformation bones and their vertex weights"""
+
+    bl_idname = "object.brignet_merge_bones"
+    bl_label = "Merge Deform Bones"
+    bl_description = "Merge bones and their assigned vertex weights"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    _armature = None
+    remove_merged: BoolProperty(name="Remove Merged", description="Remove merged groups", default=True)
+
+    @classmethod
+    def poll(cls, context):
+        if context.mode != 'POSE':
+            return False
+
+        # In case of multiple bones, we should choose which tail we should keep (perhaps most distant?)
+        # for now we limit the merge to just two bones
+        return len(context.selected_pose_bones) == 2
+
+    def merge_bones(self, bone_name, target_name):
+        """Merge selected bones and their vertex weights"""
+
+    def execute(self, context):
+        self._armature = context.active_object
+
+        bone_names = [b.name for b in context.selected_pose_bones if b != context.active_pose_bone]
+        target_name = context.active_pose_bone.name
+
+        for ob in bone_utils.iterate_rigged_obs(self._armature):
+            for name in bone_names:
+                bone_utils.merge_vertex_groups(ob, target_name, name, remove_merged=self.remove_merged)
+
+        bpy.ops.object.mode_set(mode='EDIT')
+        target_bone = self._armature.data.edit_bones[target_name]
+        for name in bone_names:
+            ebone = self._armature.data.edit_bones[name]
+            target_bone.tail = ebone.tail
+
+            for child in ebone.children:
+                child.parent = target_bone
+
+            self._armature.data.edit_bones.remove(ebone)
+        bpy.ops.object.mode_set(mode='POSE')
+
+        return {'FINISHED'}
+
+
 class SpineFix(bpy.types.Operator):
     """Rename deformation bones as generated via rigify. Rigify should be enabled"""
 
