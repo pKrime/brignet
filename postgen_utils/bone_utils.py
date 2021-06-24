@@ -441,7 +441,10 @@ def iterate_rigged_obs(armature_object):
 
 def get_group_verts_weight(obj, vertex_group, threshold=0.1):
     """Iterate vertex index and weight assigned to given vertex_group"""
-    group_idx = obj.vertex_groups[vertex_group].index
+    try:
+        group_idx = obj.vertex_groups[vertex_group].index
+    except KeyError:
+        return
 
     for i, v in enumerate(obj.data.vertices):
         try:
@@ -456,7 +459,10 @@ def get_group_verts_weight(obj, vertex_group, threshold=0.1):
 
 
 def merge_vertex_groups(obj, v_grp_a, v_grp_b, remove_merged=True):
-    group_a = obj.vertex_groups[v_grp_a]
+    try:
+        group_a = obj.vertex_groups[v_grp_a]
+    except KeyError:
+        return
 
     for idx, weight in get_group_verts_weight(obj, v_grp_b):
         group_a.add([idx], weight, 'REPLACE')
