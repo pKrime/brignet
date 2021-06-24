@@ -63,9 +63,12 @@ class MergeBones(bpy.types.Operator):
     bl_description = "Merge bones and their assigned vertex weights"
     bl_options = {'REGISTER', 'UNDO'}
 
-    _armature = None
     mirror: BoolProperty(name="Mirror", description="merge bones from the other side too", default=True)
     remove_merged: BoolProperty(name="Remove Merged", description="Remove merged groups", default=True)
+    merge_tails: BoolProperty(name="Merge Tails",
+                              description="Move the resulting bone tail where the merged bone tail was", default=True)
+
+    _armature = None
 
     @classmethod
     def poll(cls, context):
@@ -74,13 +77,16 @@ class MergeBones(bpy.types.Operator):
 
         # In case of multiple bones, we should choose which tail we should keep (perhaps most distant?)
         # for now we limit the merge to just two bones
-        return len(context.selected_pose_bones) == 2
+        return len(context.selected_pose_bones) < 3
 
     def merge_bones(self, ebone, target_bone):
         """Merge selected bones and their vertex weights"""
-        target_bone.tail = ebone.tail
+        if self.merge_tails:
+            target_bone.tail = ebone.tail
 
         for child in ebone.children:
+            if child.head != target_bone.tail:
+                child.use_connect = False
             child.parent = target_bone
 
         self._armature.data.edit_bones.remove(ebone)
