@@ -331,6 +331,12 @@ class NamiFy(bpy.types.Operator):
     def execute(self, context):
         armature = context.active_object
         self.rename_def_bones(armature)
+
+        # trigger update as vgroup indices have changed
+        for obj in bone_utils.iterate_rigged_obs(armature):
+            obj.update_tag(refresh={'DATA'})
+
+        context.view_layer.update()
         return {'FINISHED'}
 
 
