@@ -459,6 +459,7 @@ def get_group_verts_weight(obj, vertex_group, threshold=0.1):
 
 
 def merge_vertex_groups(obj, v_grp_a, v_grp_b, remove_merged=True):
+    # print("merging", v_grp_a, v_grp_b)
     try:
         group_a = obj.vertex_groups[v_grp_a]
     except KeyError:
@@ -468,7 +469,12 @@ def merge_vertex_groups(obj, v_grp_a, v_grp_b, remove_merged=True):
         group_a.add([idx], weight, 'REPLACE')
 
     if remove_merged:
-        obj.vertex_groups.remove(obj.vertex_groups[v_grp_b])
+        try:
+            to_remove = obj.vertex_groups[v_grp_b]
+        except KeyError:
+            return
+
+        obj.vertex_groups.remove(to_remove)
 
 
 def vec_roll_to_mat3_normalized(nor, roll):

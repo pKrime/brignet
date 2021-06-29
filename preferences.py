@@ -17,10 +17,10 @@ class BrignetEnvironment(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         env_path = bpy.context.preferences.addons[__package__].preferences.modules_path
-        if os.path.exists(env_path):
+        if not env_path:
             return False
 
-        return bool(BrignetPrefs.missing_modules)
+        return len(BrignetPrefs.missing_modules) > 0
 
     def execute(self, context):
         env_path = bpy.context.preferences.addons[__package__].preferences.modules_path
@@ -46,7 +46,6 @@ class BrignetPrefs(bpy.types.AddonPreferences):
         env_path = bpy.context.preferences.addons[__package__].preferences.modules_path
 
         if not os.path.isdir(env_path):
-            print(f'{env_path} is not a directory, no path added')
             return False
             
         if sys.platform.startswith("linux"):
@@ -58,7 +57,6 @@ class BrignetPrefs(bpy.types.AddonPreferences):
 
         if not os.path.isdir(sitepackages):
             # not a python path, but the user might be still typing
-            print(f'{sitepackages} not a directory, no path added')
             return False
 
         platformpath = os.path.join(sitepackages, sys.platform)

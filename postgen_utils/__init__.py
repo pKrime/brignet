@@ -98,22 +98,20 @@ class MergeBones(bpy.types.Operator):
         target_name = context.active_pose_bone.name
 
         other_target_name = ''
-        other_side = ''
 
         if self.mirror:
-            # TODO: duplicate names like .L.001
-            if target_name.endswith('.L'):
-                other_side = '.R'
-            elif target_name.endswith('.R'):
-                other_side = '.L'
-            if other_side:
-                other_target_name = target_name[:-2] + other_side
+            side, other_side = side_from_bone_name(target_name)
+
+            if side and other_side:
+                other_target_name = other_side_name(target_name, side, other_side)
 
         for ob in bone_utils.iterate_rigged_obs(self._armature):
             for name in bone_names:
                 bone_utils.merge_vertex_groups(ob, target_name, name, remove_merged=self.remove_merged)
-                if other_target_name and name.endswith(('.L', '.R')):
-                    bone_utils.merge_vertex_groups(ob, other_target_name, f'{name[:-2]}{other_side}', remove_merged=self.remove_merged)
+
+                if other_target_name:
+                    other_name = other_side_name(name, side, other_side)
+                    bone_utils.merge_vertex_groups(ob, other_target_name, other_name, remove_merged=self.remove_merged)
 
         bpy.ops.object.mode_set(mode='EDIT')
         target_bone = self._armature.data.edit_bones[target_name]
@@ -208,6 +206,25 @@ class SpineFix(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def side_from_bone_name(bone_name):
+    if bone_name.endswith(('.R', '.L')):
+        side = bone_name[-2:]
+    elif bone_name[:-1].endswith(tuple(f'.{sd}.00' for sd in ('L', 'R'))):
+        side = bone_name[-6:-5]
+    else:
+        return "", ""
+
+    return side, '.L' if side == '.R' else '.R'
+
+
+def other_side_name(bone_name, side, other_side):
+    bone_name = bone_name.replace(f'{side}.00', f'{other_side}.00')
+    if bone_name.endswith(side):
+        bone_name = bone_name[:-2] + other_side
+
+    return bone_name
+
+
 class NamiFy(bpy.types.Operator):
     """Rename deformation bones as generated via rigify. Rigify should be enabled"""
 
@@ -223,19 +240,6 @@ class NamiFy(bpy.types.Operator):
     def poll(cls, context):
         return context.active_object.type == 'ARMATURE'
 
-    def side_from_name(self, bone):
-        if bone.name.endswith(('.R', '.L')):
-            side = bone.name[-2:]
-        else:
-            side = ""
-
-        if side and self.rename_mirrored:
-            other_side = '.R' if side == '.L' else '.L'
-        else:
-            other_side = ""
-
-        return side, other_side
-
     def rename_def_bones(self, armature):
         for bone in armature.pose.bones:
             if bone.name.startswith('DEF-'):
@@ -249,8 +253,8 @@ class NamiFy(bpy.types.Operator):
             if not rigify_type:
                 continue
 
-            side, other_side = self.side_from_name(bone)
-            rename_mirrored = self.rename_mirrored and bool(side)
+            side, other_side = side_from_bone_name(bone.name)
+            rename_mirrored = self.rename_mirrored and side in ('.L', '.R')
 
             chain = LimbChain(bone, armature)
             rigify_parameters = bone.rigify_parameters
@@ -265,7 +269,7 @@ class NamiFy(bpy.types.Operator):
                     parent_name = 'DEF-pelvis'
 
                 if rename_mirrored:
-                    other_parent_name = bone.parent.name[:-2] + other_side
+                    other_parent_name = other_side_name(bone.parent.name, side, other_side)
                     other_parent = armature.pose.bones[other_parent_name]
                     other_parent.name = parent_name + other_side
                 bone.parent.name = parent_name + side
@@ -281,7 +285,7 @@ class NamiFy(bpy.types.Operator):
                         continue
 
                     if rename_mirrored:
-                        other_name = cbone.name[:-2] + other_side
+                        other_name = other_side_name(cbone.name, side, other_side)
                         try:
                             other_bone = armature.pose.bones[other_name]
                         except KeyError:
@@ -298,7 +302,7 @@ class NamiFy(bpy.types.Operator):
                 else:
                     basename = 'DEF-toe'
                     if rename_mirrored:
-                        other_name = cbone.name[:-2] + other_side
+                        other_name = other_side_name(cbone.name, side, other_side)
                         try:
                             other_bone = armature.pose.bones[other_name]
                         except KeyError:
