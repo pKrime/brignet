@@ -126,7 +126,7 @@ class PredictSteps(Enum):
 class BrigNetPredict(bpy.types.Operator):
     """Predict joint position of chosen mesh using a trained model"""
     bl_idname = "object.brignet_predict"
-    bl_label = "Predict joints and skinning"
+    bl_label = "Predict bones and weights"
 
     bandwidth: FloatProperty()
     threshold: FloatProperty()
@@ -171,7 +171,7 @@ class BrigNetPredict(bpy.types.Operator):
         if self.current_step == PredictSteps.Loading_Networks:
             self._networks = rignetconnect.Networks()
         elif self.current_step == PredictSteps.Creating_Data:
-            self._pred_data, self._mesh_storage = rignetconnect.init_data(wm.brignet_targetmesh)
+            self._pred_data, self._mesh_storage = rignetconnect.init_data(wm.brignet_targetmesh, wm.brignet_samples)
         elif self.current_step == PredictSteps.Predicting_Joints:
             self._pred_data = rignetconnect.predict_joint(self._pred_data, self._networks.joint_net, self._mesh_storage,
                                                           self.bandwidth, self.threshold)
@@ -229,11 +229,11 @@ class BrigNetPredict(bpy.types.Operator):
 
 class BrignetPanel(bpy.types.Panel):
     """Creates a Panel in the scene context of the properties editor"""
-    bl_label = "bRigNet Meshes"
+    bl_label = "Neural Rigging"
     bl_idname = "RIGNET_PT_layout"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'bRigNet'
+    bl_category = 'RigNet'
 
     def draw(self, context):
         layout = self.layout
@@ -247,7 +247,7 @@ class BrignetPanel(bpy.types.Panel):
         col = split.column()
         col.prop(wm, 'brignet_highrescollection', text='')
         col = split.column()
-        col.operator(BrignetCollection.bl_idname, text='<-')
+        col.operator(BrignetCollection.bl_idname, text='', icon='RESTRICT_SELECT_OFF')
 
         row = layout.row()
         row.label(text="Simple Mesh:")
@@ -256,7 +256,7 @@ class BrignetPanel(bpy.types.Panel):
         col = split.column()
         col.prop(wm, 'brignet_targetmesh', text='')
         col = split.column()
-        col.operator(BrignetRemesh.bl_idname, text='<-')
+        col.operator(BrignetRemesh.bl_idname, text='', icon='RESTRICT_SELECT_OFF')
 
         if wm.brignet_targetmesh:
             remesh_mod = next((mod for mod in wm.brignet_targetmesh.modifiers if mod.type == 'REMESH'), None)
@@ -297,6 +297,9 @@ class BrignetPanel(bpy.types.Panel):
             row.prop(wm, 'brignet_threshold', text='Treshold')
 
             row = layout.row()
+            row.prop(wm, 'brignet_samples', text='Samples')
+
+            row = layout.row()
             row.prop(wm, 'brignet_mirror_names')
 
 
@@ -317,6 +320,11 @@ def register_properties():
                                                               description='Minimum skin weight',
                                                               min=0.01e-2,
                                                               max=1.0)
+
+    bpy.types.WindowManager.brignet_samples = FloatProperty(name="samples", default=2000,
+                                                            description='Poisson Disks Samples',
+                                                            min=100,
+                                                            max=5000)
 
     bpy.types.WindowManager.brignet_obj_path = StringProperty(name='Mesh obj',
                                                               description='Path to Mesh file',
@@ -341,6 +349,7 @@ def unregister_properties():
     del bpy.types.WindowManager.brignet_highrescollection
     del bpy.types.WindowManager.brignet_density
     del bpy.types.WindowManager.brignet_threshold
+    del bpy.types.WindowManager.brignet_samples
     del bpy.types.WindowManager.brignet_obj_path
     del bpy.types.WindowManager.brignet_skel_path
     del bpy.types.WindowManager.brignet_current_progress
