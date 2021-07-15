@@ -41,6 +41,9 @@ class MeshStorage:
     _surf_geodesic = None
     _voxels = None
 
+    def __init__(self, samples=2000):
+        self._samples = samples
+
     def set_mesh_data(self, mesh_obj):
         self._mesh_data = NormalizedMeshData(mesh_obj)
 
@@ -53,7 +56,7 @@ class MeshStorage:
     def surface_geodesic(self):
         if self._surf_geodesic is None:
             assert self._mesh_data is not None
-            self._surf_geodesic = self.mesh_sampler.calc_geodesic()
+            self._surf_geodesic = self.mesh_sampler.calc_geodesic(samples=self._samples)
         return self._surf_geodesic
 
     @property
@@ -563,8 +566,8 @@ class Networks:
         print("     skinning prediction network loaded.")
 
 
-def init_data(mesh_obj):
-    mesh_storage = MeshStorage()
+def init_data(mesh_obj, samples=2000):
+    mesh_storage = MeshStorage(samples)
     mesh_storage.set_mesh_data(mesh_obj)
 
     predict_data = create_single_data(mesh_storage)
@@ -607,8 +610,10 @@ def create_armature(mesh_obj, predicted_rig):
                   (0.0, 0, -1.0, 0.0),
                   (0.0, 1, 0, 0.0),
                   (0.0, 0.0, 0.0, 1.0)))
-    ArmatureGenerator(predicted_rig, mesh_obj).generate(matrix=mat)
+    new_arm = ArmatureGenerator(predicted_rig, mesh_obj).generate(matrix=mat)
     torch.cuda.empty_cache()
+
+    return new_arm
 
 
 def clear():

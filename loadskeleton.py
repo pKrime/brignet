@@ -10,7 +10,7 @@ class LoadSkeletonPanel(bpy.types.Panel):
     bl_idname = "RIGNET_PT_skeleton"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'bRigNet'
+    bl_category = 'RigNet'
 
     def draw(self, context):
         wm = context.window_manager
