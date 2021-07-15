@@ -178,7 +178,7 @@ class BrignetPrefs(bpy.types.AddonPreferences):
                 'wm.url_open',
                 text='Download'
             )
-            op.url = "https://umass.box.com/s/l7dxfayrubf5qzxcyg7can715xnislwm"
+            op.url = "https://umass-my.sharepoint.com/:u:/g/personal/zhanxu_umass_edu/EYKLCvYTWFJArehlo3-H2SgBABnY08B4k5Q14K7H1Hh0VA"
 
             row = col.row()
 
