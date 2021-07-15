@@ -66,6 +66,8 @@ class CudaDetect:
         nvcc_out = str(nvcc_out)
         ver = nvcc_out.rsplit(" V", 1)[-1]
         ver = ver.strip("'\\r\\n")
+        ver_ends = next((i for i, c in enumerate(ver) if not (c.isdigit() or c == '.')), len(ver))
+        ver = ver[:ver_ends]
 
         self.major, self.minor, self.micro = ver.split(".", 2)
         self.result = CudaResult.SUCCESS
