@@ -1,8 +1,10 @@
-# bRigNet
+bRigNet
 ---------
 Neural Rigging for [blender](https://www.blender.org/ "Blender Home Page") using [RigNet](https://zhan-xu.github.io/rig-net/ "RigNet Home Page")
 
-Blender is the open source 3D application from the Blender Foundation. RigNet has been presented in the following papers
+Blender is the open source 3D application from the Blender Foundation. RigNet is the Machine Learning prediction
+for articulated characters. It has a dual license, GPL3 for open source projects, commercial otherwise.
+It was presented in the following papers
 
 ``` 
   @InProceedings{AnimSkelVolNet,
@@ -23,19 +25,30 @@ Blender is the open source 3D application from the Blender Foundation. RigNet ha
   }
 ```
 
-**Warning:** this addon is experimental, the install procedure is clumsy and the code could be better.
-Everything about it could change, hopefully in good.
-
 
 ## Setup
 
 bRigNet requires SciPy, PyTorch and torch-geometric, along with torch-scatter and torch-sparse.
 
-Environment managers, like conda or virtualenv can be used to ease the install.
-To take advantage of GPU hardware, PyTorch requires the CUDA toolkit, which can be found at the
+## Installation
+
+Download the Neural Rigging add-on as a .zip file and install it from the blender addons window,
+or copy the code to the blender scripts path
+
+### Install dependencies via "Install" button
+
+At present, the CUDA toolkit from nVidia is required, it can be found at the
 [manifacturer website](https://developer.nvidia.com)
 
-### Install the required modules using *conda*
+A dependency installer is available in the preferences.
+
+* Install CUDA. At present prebuilt packages support versions 10.1, 10.2, 11.1
+* In the addon preferences, make sure that the Cuda version is detected correctly.
+* Hit the "Install" button. It can take time!
+
+Alternatively, Environment managers, like conda or virtualenv can be used to ease the install. 
+
+### Install dependencies using *conda*
 
 Anaconda is a data science platform from Anaconda Inc., it can be downloaded from the
 [company website](https://www.anaconda.com/).
@@ -107,9 +120,9 @@ conda info --envs
 
 The environment directory can be set in the "Additional Modules" setting of the bRigNet preferences
 
-### Install the required modules using virtualenv
+### Install dependencies using virtualenv
 
-Alternatively, virtualenv can be used to create a Python environment with the required packages.
+virtualenv can be used to create a Python environment with the required packages.
 First, python 3.7 must be installed on the system. It can be found at https://www.python.org/downloads/
 
 Make sure that **Add Python 3.7 to PATH** is checked in the setup options.    
@@ -148,16 +161,11 @@ pip install torch-geometric
 
 the virtual environment directory can be set as the "Additional modules path" in the brignet preferences
 
-## Installation
-
-Download bRigNet as a .zip file and install it from the blender addons window,
-or copy the code to the blender scripts path
-
 ## Usage 
 Enable *bRigNet* in the blender addons, the preferences will show up.
 Set the Modules path properties to the RigNet environment from the previous step
 
-RigNet requires a trained model. They have made theirs available at [this address](https://umass.box.com/s/l7dxfayrubf5qzxcyg7can715xnislwm)
+RigNet requires a trained model. They have made theirs available at [this address](https://umass-my.sharepoint.com/:u:/g/personal/zhanxu_umass_edu/EYKLCvYTWFJArehlo3-H2SgBABnY08B4k5Q14K7H1Hh0VA)
 The checkpoint folder can be copied to the RigNet subfolder.
 A different location can be set in the addon preferences.
 
@@ -173,6 +181,19 @@ on which to transfer the final weights
 Rigs generated using RigNet from the command line can be loaded via the **Load Skeleton** panel.
 Please select the *.obj and *.txt file and press the button **Load Rignet character**
 
+## Training
+
+The blender addon doesn't cover training yet. If you want to train your own model, please follow the instructions
+from the [RigNet project](https://github.com/zhan-xu/RigNet#training).
+
+## Disclaimer
+
+This blender implementation of RigNet and the author of this add-on are NOT associated with the University of
+Massachusetts Amherst.
+
+This add-on has received a research grant from the Blender Foundation.   
+
 ## License
 
-bRigNet is released under the GNU General Public License version 3. RigNet is licensed under the General Public License Version 3 (GPLv3), or under a Commercial License.
+This addon is released under the GNU General Public License version 3 (GPLv3).
+The RigNet subfolder is licensed under the General Public License Version 3 (GPLv3), or under a Commercial License.
