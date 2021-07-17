@@ -126,7 +126,7 @@ class PredictSteps(Enum):
 class BrigNetPredict(bpy.types.Operator):
     """Predict joint position of chosen mesh using a trained model"""
     bl_idname = "object.brignet_predict"
-    bl_label = "Predict bones and weights"
+    bl_label = "Predict Rig"
 
     bandwidth: FloatProperty()
     threshold: FloatProperty()
@@ -169,7 +169,7 @@ class BrigNetPredict(bpy.types.Operator):
         wm = context.window_manager
         wm.brignet_targetmesh.hide_set(False)  # hidden target mesh might cause crashes
         if self.current_step == PredictSteps.Loading_Networks:
-            self._networks = rignetconnect.Networks()
+            self._networks = rignetconnect.Networks(load_skinning=wm.brignet_predict_weights)
         elif self.current_step == PredictSteps.Creating_Data:
             self._pred_data, self._mesh_storage = rignetconnect.init_data(wm.brignet_targetmesh, wm.brignet_samples)
         elif self.current_step == PredictSteps.Predicting_Joints:
@@ -178,8 +178,13 @@ class BrigNetPredict(bpy.types.Operator):
         elif self.current_step == PredictSteps.Predicting_Hierarchy:
             self._pred_skeleton = rignetconnect.predict_hierarchy(self._pred_data, self._networks, self._mesh_storage)
         elif self.current_step == PredictSteps.Predicting_Weights:
-            self._pred_rig = rignetconnect.predict_weights(self._pred_data, self._pred_skeleton,
-                                                           self._networks.skin_net, self._mesh_storage)
+            if wm.brignet_predict_weights:
+                self._pred_rig = rignetconnect.predict_weights(self._pred_data, self._pred_skeleton,
+                                                               self._networks.skin_net, self._mesh_storage)
+            else:
+                self._pred_rig = self._pred_skeleton
+                mesh_data = self._mesh_storage.mesh_data
+                self._pred_rig.normalize(mesh_data.scale_normalize, -mesh_data.translation_normalize)
         elif self.current_step == PredictSteps.Creating_Armature:
             self._armature = rignetconnect.create_armature(wm.brignet_targetmesh, self._pred_rig)
         elif self.current_step == PredictSteps.Post_Generation and self._armature:
@@ -300,6 +305,9 @@ class BrignetPanel(bpy.types.Panel):
             row.prop(wm, 'brignet_samples', text='Samples')
 
             row = layout.row()
+            row.prop(wm, 'brignet_predict_weights')
+
+            row = layout.row()
             row.prop(wm, 'brignet_mirror_names')
 
 
@@ -340,6 +348,9 @@ def register_properties():
                                                                      options={'HIDDEN', 'SKIP_SAVE'}
                                                                      )
 
+    bpy.types.WindowManager.brignet_predict_weights = BoolProperty(name='Predict Weights', default=True,
+                                                                   description='Predict Bone weights')
+
     bpy.types.WindowManager.brignet_mirror_names = BoolProperty(name='Mirror Bone Names', default=True,
                                                                 description='Apply .L/.R names to symmetric bones')
 
@@ -353,4 +364,5 @@ def unregister_properties():
     del bpy.types.WindowManager.brignet_obj_path
     del bpy.types.WindowManager.brignet_skel_path
     del bpy.types.WindowManager.brignet_current_progress
+    del bpy.types.WindowManager.brignet_predict_weights
     del bpy.types.WindowManager.brignet_mirror_names

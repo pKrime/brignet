@@ -520,12 +520,13 @@ def predict_skinning(input_data, pred_skel, skin_pred_net, surface_geodesic, bvh
 
 
 class Networks:
-    def __init__(self, model_dir="", load_networks=True):
+    def __init__(self, model_dir="", load_networks=True, load_skinning=True):
         self.joint_net = None
         self.root_net = None
         self.bone_net = None
         self.skin_net = None
 
+        self._load_skinning = load_skinning
         self.model_dir = model_dir if model_dir else bpy.context.preferences.addons[__package__].preferences.model_path
 
         if load_networks:
@@ -557,13 +558,14 @@ class Networks:
         self.bone_net = bone_net
         print("     connection prediction network loaded.")
 
-        skin_net = SKINNET(nearest_bone=5, use_Dg=True, use_Lf=True)
-        skin_net_checkpoint = torch.load(os.path.join(self.model_dir, 'skinnet/model_best.pth.tar'))
-        skin_net.load_state_dict(skin_net_checkpoint['state_dict'])
-        skin_net.to(DEVICE)
-        skin_net.eval()
-        self.skin_net = skin_net
-        print("     skinning prediction network loaded.")
+        if self._load_skinning:
+            skin_net = SKINNET(nearest_bone=5, use_Dg=True, use_Lf=True)
+            skin_net_checkpoint = torch.load(os.path.join(self.model_dir, 'skinnet/model_best.pth.tar'))
+            skin_net.load_state_dict(skin_net_checkpoint['state_dict'])
+            skin_net.to(DEVICE)
+            skin_net.eval()
+            self.skin_net = skin_net
+            print("     skinning prediction network loaded.")
 
 
 def init_data(mesh_obj, samples=2000):
