@@ -37,17 +37,17 @@ class VenvAutoSetup:
         v_activate = os.path.normpath(v_activate)
 
         if self._on_win:
-            v_activate = "call " + v_activate
-            v_activate += ".bat"
+            v_activate = 'call "' + v_activate
+            v_activate += '.bat"'
         else:
-            v_activate = "source " + v_activate
+            v_activate = "source '{0}'".format(v_activate)
 
         return v_activate
 
     def pip_install_lines(self):
         lines = [
-            f"{self.py_exe} -m ensurepip",
-            f"{self.py_exe} -m pip install wheel"
+            f'"{self.py_exe}" -m ensurepip',
+            f'{self.py_exe}" -m pip install wheel'
         ]
 
         return lines
@@ -81,7 +81,7 @@ class VenvAutoSetup:
                                               suffix='.bat' if self._on_win else None,
                                               delete=False)
 
-        torch_line = f"{self.py_exe} -m pip install torch=={torch_version}+cu{cuda_version} -f {torch_url}"
+        torch_line = f'"{self.py_exe}" -m pip install torch=={torch_version}+cu{cuda_version} -f {torch_url}'
 
         with ba_file as f:
             if self._on_win:
@@ -102,7 +102,7 @@ class VenvAutoSetup:
                                               suffix='.bat' if self._on_win else None,
                                               delete=False)
 
-        pkg_line = f"{self.py_exe} -m pip install {package_name}"
+        pkg_line = f'"{self.py_exe}" -m pip install {package_name}'
         if additional_parameter:
             pkg_line += f" {additional_parameter}"
 
