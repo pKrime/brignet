@@ -38,7 +38,7 @@ or copy the code to the blender scripts path
 ### Install dependencies via "Install" button
 
 At present, the CUDA toolkit from nVidia is required, it can be found at the
-[manifacturer website](https://developer.nvidia.com)
+[manufacturer website](https://developer.nvidia.com)
 
 A dependency installer is available in the preferences.
 
@@ -104,7 +104,7 @@ pip install torch-geometric
 ```
 
 Alternatively, pip can try and build the libraries. Even if part of torch-sparse fails without a proper environment,
-the rilevant modules are usually built
+the relevant modules are usually built
 
 ```
 pip install torch-scatter
