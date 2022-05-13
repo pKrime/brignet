@@ -18,8 +18,13 @@ class VenvAutoSetup:
         self.py_exe = ""
 
     def create_venv(self, with_pip=True):
-        if not os.path.isdir(self.env_path):
-            venv.create(self.env_path, with_pip=with_pip)
+        if os.path.isdir(self.env_path):
+            if len(os.listdir(self.env_path)) > 0:
+                msg = "Can't create Virtual Env in existing, non empty directory)"
+                # TODO: Custom Exception
+                raise Exception(msg)
+        
+        venv.create(self.env_path, with_pip=with_pip)
 
         self.py_exe = self._get_py_exe()
 

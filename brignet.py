@@ -1,7 +1,7 @@
 from enum import Enum
 
 import bpy
-from bpy.props import IntProperty, BoolProperty, FloatProperty, PointerProperty, StringProperty
+from bpy.props import BoolProperty, FloatProperty, PointerProperty, StringProperty
 
 from .ob_utils import objects
 from .postgen_utils.bone_utils import NameFix

@@ -17,7 +17,7 @@
 
 
 bl_info = {
-    "name": "Neural Rigging",
+    "name": "Neural Rigging (RigNet)",
     "version": (0, 1, 0),
     "author": "Paolo Acampora",
     "blender": (2, 90, 0),

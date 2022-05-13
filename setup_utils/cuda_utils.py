@@ -50,16 +50,15 @@ class CudaDetect:
         cprefs = prefs.addons['cycles'].preferences
 
         if bpy.app.version[0] > 2:
+            # devices are iterated differently in blender 3.0/blender 2.9
             cprefs.refresh_devices()
 
             def get_dev():
                 for dev in cprefs.devices:
                     yield dev
         else:
-            devices = cprefs.get_devices(bpy.context)
-
             def get_dev():
-                for dev in cprefs.devices:
+                for dev in cprefs.get_devices(bpy.context):
                     for dev_entry in dev:
                         yield dev_entry
 
