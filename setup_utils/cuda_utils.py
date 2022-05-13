@@ -49,9 +49,22 @@ class CudaDetect:
         prefs = bpy.context.preferences
         cprefs = prefs.addons['cycles'].preferences
 
-        for device in cprefs.get_devices(bpy.context):
-            for dev_entry in device:
-                if dev_entry.type == 'CUDA':
+        if bpy.app.version[0] > 2:
+            cprefs.refresh_devices()
+
+            def get_dev():
+                for dev in cprefs.devices:
+                    yield dev
+        else:
+            devices = cprefs.get_devices(bpy.context)
+
+            def get_dev():
+                for dev in cprefs.devices:
+                    for dev_entry in dev:
+                        yield dev_entry
+
+        for device in get_dev():
+            if device.type == 'CUDA':
                     self.has_cuda_hardware = True
                     return
 
