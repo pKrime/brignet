@@ -609,8 +609,8 @@ def create_armature(mesh_obj, predicted_rig):
         obj.select_set(False)
 
     mat = Matrix(((1.0, 0.0, 0.0, 0.0),
-                  (0.0, 0, -1.0, 0.0),
-                  (0.0, 1, 0, 0.0),
+                  (0.0, 0.0, -1.0, 0.0),
+                  (0.0, 1.0, 0.0, 0.0),
                   (0.0, 0.0, 0.0, 1.0)))
     new_arm = ArmatureGenerator(predicted_rig, mesh_obj).generate(matrix=mat)
     torch.cuda.empty_cache()

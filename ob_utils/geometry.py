@@ -118,7 +118,7 @@ class NormalizedMeshData:
         # rotate -90 deg on X axis
         mat = Matrix(((1.0, 0.0, 0.0, 0.0),
                       (0.0, 0.0, 1.0, 0.0),
-                      (0.0, -1.0, 0, 0.0),
+                      (0.0, -1.0, 0.0, 0.0),
                       (0.0, 0.0, 0.0, 1.0)))
 
         bmesh.ops.transform(bm, matrix=mat, verts=bm.verts[:])

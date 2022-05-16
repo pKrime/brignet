@@ -77,16 +77,16 @@ class VenvAutoSetup:
 
         return ba_file.name
 
-    def torch_install_script(self, torch_version="1.8.1", cuda_version="102", torch_url=""):
+    def torch_install_script(self, torch_version="1.11.0", cuda_version="113", torch_url=""):
         if not torch_url:
-            torch_url = "https://download.pytorch.org/whl/torch_stable.html"
+            torch_url = "https://download.pytorch.org/whl"
 
         ba_file = tempfile.NamedTemporaryFile(mode='w+b',
                                               prefix="torch_install_",
                                               suffix='.bat' if self._on_win else None,
                                               delete=False)
 
-        torch_line = f'"{self.py_exe}" -m pip install torch=={torch_version}+cu{cuda_version} -f {torch_url}'
+        torch_line = f'"{self.py_exe}" -m pip install torch=={torch_version}+cu{cuda_version} --extra-index-url {torch_url}/cu{cuda_version}'
 
         with ba_file as f:
             if self._on_win:
@@ -237,7 +237,7 @@ def install_headers(env_path, download_dir):
         shutil.copy(src_path, dst_path)
 
 
-def setup_environment(environment_path, with_pip=True, torch_version="1.8.1"):
+def setup_environment(environment_path, with_pip=True, torch_version="1.11.0", cuda_version='113'):
     ve_setup = VenvAutoSetup(environment_path)
     ve_setup.create_venv(with_pip=with_pip)
 
@@ -250,10 +250,6 @@ def setup_environment(environment_path, with_pip=True, torch_version="1.8.1"):
         pip_install_script = ve_setup.pip_install_script()
         subprocess.check_call(pip_install_script)
 
-    # Get Cuda info
-    cuda_detect = CudaDetect()
-    cuda_version = cuda_detect.major + cuda_detect.minor
-
     # install pytorch
     print("installing torch")
     torch_install_script = ve_setup.torch_install_script(torch_version=torch_version, cuda_version=cuda_version)
@@ -263,6 +259,12 @@ def setup_environment(environment_path, with_pip=True, torch_version="1.8.1"):
     if cuda_version in ('101', '102', '111'):
         # wheels are provided for these versions
         find_link = f"-f https://pytorch-geometric.com/whl/torch-{torch_version}+cu{cuda_version}.html"
+        for pkg in ("torch-scatter", "torch-sparse", "torch-cluster", "torch-geometric"):
+            print(f"Installing {pkg}")
+            pkg_inst_script = ve_setup.pkg_install_script(pkg, additional_parameter=find_link)
+            subprocess.check_call(pkg_inst_script)
+    elif cuda_version == '113':
+        find_link = f"-f https://data.pyg.org/whl/torch-{torch_version}+cu{cuda_version}.html"
         for pkg in ("torch-scatter", "torch-sparse", "torch-cluster", "torch-geometric"):
             print(f"Installing {pkg}")
             pkg_inst_script = ve_setup.pkg_install_script(pkg, additional_parameter=find_link)
