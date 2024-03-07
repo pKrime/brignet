@@ -2,6 +2,10 @@ bRigNet
 ---------
 Neural Rigging for [blender](https://www.blender.org/ "Blender Home Page") using [RigNet](https://zhan-xu.github.io/rig-net/ "RigNet Home Page")
 
+**THIS ADD-ON IS DEAD AND WILL HADLY WORK, LET'S DISCUSS ABOUT BRINGING IT BACK IN THE ISSUES AND DISCUSSIONS PAGES**
+-------------------------------------------------------------------------------------------------------------------
+
+
 Blender is the open source 3D application from the Blender Foundation. RigNet is the Machine Learning prediction
 for articulated characters. It has a dual license, GPL3 for open source projects, commercial otherwise.
 It was presented in the following papers
